@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  *{box-sizing:border-box}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:oklch(85% 0.006 140);border-radius:6px}
+  input,select,textarea{font-family:inherit}
+  .shift-block:hover .shift-actions{opacity:1}
+</style>
+</helmet>
+
+<div style="height:100vh;display:flex;flex-direction:column;background:oklch(97% 0.006 140);color:oklch(22% 0.01 140)">
+
+  <header style="height:60px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:oklch(99% 0.004 140);border-bottom:1px solid oklch(89% 0.006 140)">
+    <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Schichtplaner</div>
+    <div style="display:flex;gap:4px;background:oklch(94% 0.006 140);padding:4px;border-radius:10px">
+      <button onClick="{{ setModeAdmin }}" style="{{ adminTabStyle }}">Admin</button>
+      <button onClick="{{ setModeHelfer }}" style="{{ helferTabStyle }}">Helfer</button>
+    </div>
+    <button onClick="{{ togglePreview }}" style="padding:8px 14px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:13px;font-weight:600;color:oklch(35% 0.01 140);cursor:pointer">Mobile Vorschau</button>
+  </header>
+
+  <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+
+    <div style="flex:none;display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid oklch(89% 0.006 140);background:oklch(99% 0.004 140)">
+      <select value="{{ eventId }}" onChange="{{ onEventChange }}" style="padding:8px 10px;border-radius:8px;border:1px solid oklch(89% 0.006 140);background:#fff;font-size:14px;font-weight:500;color:oklch(22% 0.01 140)">
+        <sc-for list="{{ eventOptions }}" as="ev" hint-placeholder-count="2">
+          <option value="{{ ev.id }}">{{ ev.name }}</option>
+        </sc-for>
+      </select>
+      <button onClick="{{ openEventModal }}" style="padding:8px 12px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:13px;font-weight:600;color:oklch(35% 0.01 140);cursor:pointer">+ Neues Event</button>
+      <button onClick="{{ openAblaufplanModal }}" style="padding:8px 12px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:13px;font-weight:600;color:oklch(35% 0.01 140);cursor:pointer;display:flex;align-items:center;gap:6px">Ablaufplan<sc-if value="{{ hasAblaufplan }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:oklch(58% 0.13 145)"></span></sc-if></button>
+      <button onClick="{{ openTagsModal }}" style="padding:8px 12px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:13px;font-weight:600;color:oklch(35% 0.01 140);cursor:pointer">Spalten verwalten</button>
+      <div style="display:flex;gap:6px">
+        <sc-for list="{{ dayTabs }}" as="day" hint-placeholder-count="3">
+          <button onClick="{{ day.onClick }}" style="{{ day.style }}">{{ day.label }}</button>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:oklch(48% 0.01 140)">
+        <span>Tag von</span>
+        <input type="time" value="{{ dayStartValue }}" onChange="{{ onDayStartChange }}" style="padding:6px 8px;border-radius:7px;border:1px solid oklch(87% 0.006 140);font-size:13px"/>
+        <span>bis</span>
+        <input type="time" value="{{ dayEndValue }}" onChange="{{ onDayEndChange }}" style="padding:6px 8px;border-radius:7px;border:1px solid oklch(87% 0.006 140);font-size:13px"/>
+        <sc-if value="{{ overnight }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11.5px;color:oklch(55% 0.1 30);font-weight:500">über Mitternacht</span>
+        </sc-if>
+      </div>
+      <div style="flex:1"></div>
+      <button onClick="{{ openCreateModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">+ Neue Schicht</button>
+    </div>
+
+    <div style="flex:1;display:flex;overflow:hidden">
+      <div style="flex:1;overflow:auto;position:relative;display:flex">
+
+        <div style="width:56px;flex:none;position:relative;height:{{ timelineHeight }}px;border-right:1px solid oklch(89% 0.006 140)">
+          <sc-for list="{{ hourTicks }}" as="tick" hint-placeholder-count="14">
+            <div style="position:absolute;left:0;right:6px;top:{{ tick.top }}px;text-align:right;font-size:11px;color:oklch(48% 0.01 140);transform:translateY(-6px)">{{ tick.label }}</div>
+          </sc-for>
+        </div>
+
+        <sc-for list="{{ columns }}" as="col" hint-placeholder-count="3">
+<div onMouseDown="{{ col.onMouseDown }}" onMouseMove="{{ col.onMouseMove }}" onMouseUp="{{ col.onMouseUp }}" style="flex:1;min-width:220px;position:relative;height:{{ timelineHeight }}px;border-right:1px solid oklch(89% 0.006 140);background-image:repeating-linear-gradient(to bottom, transparent 0 55px, oklch(93% 0.006 140) 55px 56px);cursor:crosshair">
+            <div style="position:sticky;top:0;z-index:5;background:oklch(99% 0.004 140 / 0.95);backdrop-filter:blur(2px);padding:8px 12px;font-size:12px;font-weight:600;color:oklch(48% 0.01 140);text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid oklch(89% 0.006 140)">{{ col.tag }}</div>
+
+            <sc-for list="{{ col.shifts }}" as="shift" hint-placeholder-count="2">
+              <div class="shift-block" onMouseDown="{{ shift.stopMouseDown }}" onDragOver="{{ shift.onDragOver }}" onDragLeave="{{ shift.onDragLeave }}" onDrop="{{ shift.onDrop }}" style="{{ shift.blockStyle }}">
+                <sc-if value="{{ shift.confirming }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;height:100%;justify-content:center;align-items:center">
+                    <div style="font-size:12px;font-weight:600">Schicht löschen?</div>
+                    <div style="display:flex;gap:8px">
+                      <button onClick="{{ shift.confirmDelete }}" style="padding:4px 10px;border-radius:6px;border:none;background:oklch(55% 0.13 30);color:#fff;font-size:12px;cursor:pointer">Ja</button>
+                      <button onClick="{{ shift.cancelDelete }}" style="padding:4px 10px;border-radius:6px;border:1px solid oklch(80% 0.006 140);background:#fff;font-size:12px;cursor:pointer">Nein</button>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ shift.notConfirming }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
+                    <div style="min-width:0;flex:1;overflow:hidden">
+                      <div style="font-size:13px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ shift.name }}</div>
+                      <div style="font-size:11.5px;color:oklch(48% 0.01 140);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ shift.start }}–{{ shift.end }} · {{ shift.desc }}</div>
+                    </div>
+                    <div class="shift-actions" style="display:flex;gap:4px;flex:none;opacity:0;transition:opacity .12s">
+                      <button onClick="{{ shift.startEdit }}" title="Bearbeiten" style="width:22px;height:22px;border-radius:6px;border:1px solid oklch(85% 0.006 140);background:#fff;cursor:pointer;font-size:11px;line-height:1">✎</button>
+                      <button onClick="{{ shift.startDelete }}" title="Löschen" style="width:22px;height:22px;border-radius:6px;border:1px solid oklch(85% 0.006 140);background:#fff;cursor:pointer;font-size:11px;line-height:1">✕</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;overflow:hidden">
+                    <sc-for list="{{ shift.assignedChips }}" as="chip" hint-placeholder-count="1">
+                      <span style="display:inline-flex;align-items:center;gap:5px;background:oklch(94% 0.006 140);border-radius:20px;padding:3px 4px 3px 9px;font-size:12px;font-weight:500">
+                        {{ chip.name }}
+                        <button onClick="{{ chip.remove }}" style="width:16px;height:16px;border-radius:50%;border:none;background:oklch(87% 0.006 140);cursor:pointer;font-size:10px;line-height:1;color:oklch(35% 0.01 140)">✕</button>
+                      </span>
+                    </sc-for>
+                    <sc-if value="{{ shift.showUnassignedLabel }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size:11.5px;color:oklch(55% 0.1 30);font-weight:500">Unbesetzt — Helfer hier ablegen</span>
+                    </sc-if>
+                  </div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <sc-if value="{{ col.dragPreview }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:8px;right:8px;top:{{ col.dragPreview.top }}px;height:{{ col.dragPreview.height }}px;border-radius:9px;border:2px dashed oklch(56% 0.13 175);background:oklch(93% 0.04 175);pointer-events:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:oklch(32% 0.1 175)">{{ col.dragPreview.label }}</div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="width:288px;flex:none;border-left:1px solid oklch(89% 0.006 140);background:oklch(99% 0.004 140);display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:16px 16px 12px;border-bottom:1px solid oklch(89% 0.006 140)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600">Helfer-Pool</div>
+            <button onClick="{{ openHelperModal }}" style="padding:5px 10px;border-radius:7px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:12px;font-weight:600;color:oklch(35% 0.01 140);cursor:pointer">+ Neuer Helfer</button>
+          </div>
+          <input value="{{ poolSearch }}" onChange="{{ onPoolSearch }}" placeholder="Name suchen…" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid oklch(89% 0.006 140);font-size:13px;margin-bottom:10px"/>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ poolTagOptions }}" as="opt" hint-placeholder-count="4">
+              <button onClick="{{ opt.onClick }}" style="{{ opt.style }}">{{ opt.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="flex:1;overflow:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ poolHelpers }}" as="h" hint-placeholder-count="6">
+            <div draggable="{{ h.available }}" onDragStart="{{ h.onDragStart }}" onDragEnd="{{ h.onDragEnd }}" style="{{ h.cardStyle }}">
+              <div style="display:flex;align-items:center;gap:6px">
+                <sc-if value="{{ h.roleLabel }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:10px;font-weight:600;color:#fff;padding:2px 7px;border-radius:10px;background:{{ h.roleColor }}">{{ h.roleLabel }}</span>
+                </sc-if>
+                <div style="font-size:13.5px;font-weight:500">{{ h.name }}</div>
+              </div>
+              <div style="font-size:11px;color:oklch(48% 0.01 140);margin-top:3px">{{ h.tagsLabel }}</div>
+              <div style="font-size:11px;color:oklch(55% 0.01 140);margin-top:2px">{{ h.statsLabel }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isHelfer }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;overflow:auto">
+    <div style="max-width:760px;margin:0 auto;padding:24px 20px 60px">
+      <div style="display:flex;gap:12px;margin-bottom:20px;position:sticky;top:0;background:oklch(97% 0.006 140);padding:8px 0;z-index:5">
+        <select value="{{ helferEventId }}" onChange="{{ onHelferEventChange }}" style="padding:9px 10px;border-radius:8px;border:1px solid oklch(89% 0.006 140);background:#fff;font-size:14px;font-weight:500;color:oklch(22% 0.01 140)">
+          <sc-for list="{{ eventOptions }}" as="ev" hint-placeholder-count="2">
+            <option value="{{ ev.id }}">{{ ev.name }}</option>
+          </sc-for>
+        </select>
+        <input value="{{ helferNameFilter }}" onChange="{{ onHelferNameFilter }}" placeholder="Nach Namen filtern (z. B. deinem eigenen)…" style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid oklch(89% 0.006 140);font-size:14px"/>
+      </div>
+
+      <sc-for list="{{ helferDays }}" as="day" hint-placeholder-count="3">
+        <div style="margin-bottom:22px">
+          <div style="font-size:13px;font-weight:600;color:oklch(48% 0.01 140);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px">{{ day.label }}</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ day.shifts }}" as="shift" hint-placeholder-count="4">
+              <div style="{{ shift.rowStyle }}">
+                <div style="width:96px;flex:none;font-size:13px;font-weight:600;color:oklch(35% 0.01 140)">{{ shift.start }}–{{ shift.end }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14.5px;font-weight:600">{{ shift.name }}</div>
+                  <div style="font-size:12.5px;color:oklch(48% 0.01 140);margin-top:1px">{{ shift.tag }} · {{ shift.desc }}</div>
+                </div>
+                <div style="flex:none;max-width:220px;text-align:right;font-size:13px;color:oklch(30% 0.01 140);font-weight:500">{{ shift.assignedLabel }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ helperModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,16,10,0.35);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div style="width:440px;background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+        <div style="font-size:16px;font-weight:600;margin-bottom:16px">Neuer Helfer</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <label style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Name
+            <input value="{{ helperModalName }}" onChange="{{ onHelperModalName }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+          </label>
+          <div>
+            <div style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140);margin-bottom:7px">Tätigkeits-Tags</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-for list="{{ helperModalTagOptions }}" as="t" hint-placeholder-count="3">
+                <button onClick="{{ t.toggle }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140);margin-bottom:7px">Rolle</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+              <sc-for list="{{ helperModalRoleOptions }}" as="r" hint-placeholder-count="2">
+                <button onClick="{{ r.select }}" style="padding:6px 12px;border-radius:16px;font-size:12.5px;font-weight:600;cursor:pointer;color:#fff;background:{{ r.color }};outline:{{ r.selected ? '2px solid oklch(20% 0.01 140)' : 'none' }};outline-offset:1px">{{ r.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input value="{{ helperModalNewTagLabel }}" onChange="{{ onHelperModalNewTagLabel }}" placeholder="Neuer Rollen-Tag…" style="flex:1;padding:7px 9px;border-radius:7px;border:1px solid oklch(87% 0.006 140);font-size:12.5px"/>
+              <sc-for list="{{ colorSwatchOptions }}" as="c" hint-placeholder-count="5">
+                <button onClick="{{ c.select }}" style="width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;background:{{ c.color }};outline:{{ c.selected ? '2px solid oklch(20% 0.01 140)' : 'none' }};outline-offset:2px"></button>
+              </sc-for>
+              <button onClick="{{ addNewRoleTag }}" style="padding:7px 10px;border-radius:7px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:12px;font-weight:600;cursor:pointer">+ Tag</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140);margin-bottom:7px">Verfügbarkeit</div>
+            <div style="display:flex;flex-direction:column;gap:6px;max-height:140px;overflow:auto;padding-right:4px">
+              <sc-for list="{{ helperModalAvailabilityOptions }}" as="d" hint-placeholder-count="4">
+                <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:oklch(30% 0.01 140)">
+                  <input type="checkbox" checked="{{ d.checked }}" onChange="{{ d.toggle }}"/>
+                  {{ d.label }}
+                </label>
+              </sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ helperModalError }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:12.5px;color:oklch(55% 0.13 30)">{{ helperModalError }}</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+          <button onClick="{{ closeHelperModal }}" style="padding:9px 16px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:14px;font-weight:500;cursor:pointer">Abbrechen</button>
+          <button onClick="{{ saveHelperModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Helfer anlegen</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ ablaufplanModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,16,10,0.35);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div style="width:560px;background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+        <div style="font-size:16px;font-weight:600;margin-bottom:16px">Ablaufplan – {{ eventName }}</div>
+        <textarea value="{{ ablaufplanText }}" onChange="{{ onAblaufplanText }}" placeholder="z. B.&#10;08:00 Aufbau beginnt&#10;16:00 Fassanstich&#10;23:00 Bierwagen schließt" rows="12" style="width:100%;padding:12px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:13.5px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px">
+          <button onClick="{{ closeAblaufplanModal }}" style="padding:9px 16px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:14px;font-weight:500;cursor:pointer">Abbrechen</button>
+          <button onClick="{{ saveAblaufplanModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ tagsModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,16,10,0.35);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div style="width:420px;background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">Spalten verwalten</div>
+        <div style="font-size:12.5px;color:oklch(48% 0.01 140);margin-bottom:16px">{{ eventName }}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ tagsModalRows }}" as="row" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input value="{{ row.name }}" onChange="{{ row.onNameChange }}" style="flex:1;padding:8px 10px;border-radius:7px;border:1px solid oklch(85% 0.006 140);font-size:13.5px"/>
+              <sc-if value="{{ row.hasUsage }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:11px;color:oklch(48% 0.01 140);flex:none">{{ row.usage }} Schichten</span>
+              </sc-if>
+              <button onClick="{{ row.remove }}" disabled="{{ row.deleteDisabled }}" style="width:26px;height:26px;flex:none;border-radius:6px;border:1px solid oklch(85% 0.006 140);background:#fff;cursor:pointer;font-size:11px;color:oklch(35% 0.01 140);opacity:{{ row.deleteDisabled ? 0.4 : 1 }}">✕</button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <input value="{{ tagsModalNewTag }}" onChange="{{ onTagsModalNewTag }}" placeholder="Neue Spalte…" style="flex:1;padding:8px 10px;border-radius:7px;border:1px solid oklch(85% 0.006 140);font-size:13.5px"/>
+          <button onClick="{{ addTagsModalRow }}" style="padding:8px 12px;border-radius:7px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:12.5px;font-weight:600;cursor:pointer">+ Hinzufügen</button>
+        </div>
+        <sc-if value="{{ tagsModalError }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12.5px;color:oklch(55% 0.13 30);margin-top:10px">{{ tagsModalError }}</div>
+        </sc-if>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+          <button onClick="{{ closeTagsModal }}" style="padding:9px 16px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:14px;font-weight:500;cursor:pointer">Abbrechen</button>
+          <button onClick="{{ saveTagsModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ mobilePreviewOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,30,20,0.55);display:flex;align-items:center;justify-content:center;z-index:60">
+      <div style="position:relative">
+        <button onClick="{{ togglePreview }}" style="position:absolute;top:-44px;right:0;padding:8px 14px;border-radius:8px;border:none;background:#fff;font-size:13px;font-weight:600;cursor:pointer">Schließen</button>
+        <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" title="Schichten" hint-size="402,874">
+          <div style="padding:0 16px 30px;display:flex;flex-direction:column;gap:16px;font-family:-apple-system,system-ui,sans-serif">
+            <div style="display:flex;background:oklch(93% 0.01 140);border-radius:9px;padding:2px">
+              <sc-for list="{{ mobileEventOptions }}" as="ev" hint-placeholder-count="2">
+                <button onClick="{{ ev.onClick }}" style="{{ ev.style }}">{{ ev.name }}</button>
+              </sc-for>
+            </div>
+            <input value="{{ helferNameFilter }}" onChange="{{ onHelferNameFilter }}" placeholder="Nach Namen filtern…" style="width:100%;padding:11px 14px;border-radius:11px;border:none;background:oklch(93% 0.01 140);font-size:15px;box-sizing:border-box"/>
+            <sc-for list="{{ helferDays }}" as="day" hint-placeholder-count="2">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:oklch(48% 0.01 140);text-transform:uppercase;letter-spacing:0.03em;padding:0 4px 6px">{{ day.label }}</div>
+                <div style="background:#fff;border-radius:20px;overflow:hidden">
+                  <sc-for list="{{ day.shifts }}" as="shift" hint-placeholder-count="3">
+                    <div style="{{ shift.mobileRowStyle }}">
+                      <div style="width:4px;border-radius:4px;flex:none;align-self:stretch;background:{{ shift.mobileAccent }}"></div>
+                      <div style="flex:1;min-width:0;padding:11px 12px">
+                        <div style="display:flex;justify-content:space-between;gap:8px">
+                          <div style="font-size:16px;font-weight:600;color:#000">{{ shift.name }}</div>
+                          <div style="font-size:15px;color:oklch(45% 0.01 140);flex:none">{{ shift.start }}–{{ shift.end }}</div>
+                        </div>
+                        <div style="font-size:14px;color:oklch(50% 0.01 140);margin-top:2px">{{ shift.tag }} · {{ shift.assignedLabel }}</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </x-import>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ eventModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,16,10,0.35);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div style="width:420px;background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">Neues Event anlegen</div>
+        <div style="font-size:12.5px;color:oklch(48% 0.01 140);margin-bottom:16px">Angemeldet als Admin</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <label style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Veranstaltungsname
+            <input value="{{ eventModalForm.name }}" onChange="{{ onEventModalName }}" placeholder="z. B. Frühlingsfest" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+          </label>
+          <div style="display:flex;gap:12px">
+            <label style="flex:1;font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Startdatum
+              <input type="date" value="{{ eventModalForm.start }}" onChange="{{ onEventModalStart }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+            </label>
+            <label style="flex:1;font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Enddatum
+              <input type="date" value="{{ eventModalForm.end }}" onChange="{{ onEventModalEnd }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+            </label>
+          </div>
+          <sc-if value="{{ eventModalError }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:12.5px;color:oklch(55% 0.13 30)">{{ eventModalError }}</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+          <button onClick="{{ closeEventModal }}" style="padding:9px 16px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:14px;font-weight:500;cursor:pointer">Abbrechen</button>
+          <button onClick="{{ saveEventModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Event anlegen</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(20,16,10,0.35);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div style="width:420px;background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+        <div style="font-size:16px;font-weight:600;margin-bottom:16px">{{ modalTitle }}</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <label style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Name
+            <input value="{{ modalForm.name }}" onChange="{{ onModalName }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+          </label>
+          <label style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Beschreibung
+            <input value="{{ modalForm.desc }}" onChange="{{ onModalDesc }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+          </label>
+          <label style="font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Tag
+            <select value="{{ modalForm.tag }}" onChange="{{ onModalTag }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px;background:#fff">
+              <sc-for list="{{ tagOptions }}" as="t" hint-placeholder-count="3">
+                <option value="{{ t }}">{{ t }}</option>
+              </sc-for>
+            </select>
+          </label>
+          <div style="display:flex;gap:12px">
+            <label style="flex:1;font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Start
+              <input type="time" value="{{ modalForm.start }}" onChange="{{ onModalStart }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+            </label>
+            <label style="flex:1;font-size:12.5px;font-weight:600;color:oklch(48% 0.01 140)">Ende
+              <input type="time" value="{{ modalForm.end }}" onChange="{{ onModalEnd }}" style="width:100%;margin-top:5px;padding:9px 10px;border-radius:8px;border:1px solid oklch(85% 0.006 140);font-size:14px"/>
+            </label>
+          </div>
+          <sc-if value="{{ modalError }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:12.5px;color:oklch(55% 0.13 30)">{{ modalError }}</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+          <button onClick="{{ closeModal }}" style="padding:9px 16px;border-radius:8px;border:1px solid oklch(85% 0.006 140);background:#fff;font-size:14px;font-weight:500;cursor:pointer">Abbrechen</button>
+          <button onClick="{{ saveModal }}" style="padding:9px 16px;border-radius:8px;border:none;background:oklch(58% 0.13 145);color:#fff;font-size:14px;font-weight:600;cursor:pointer">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 1400, &quot;height&quot;: 900},
+  &quot;defaultMode&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;admin&quot;, &quot;options&quot;: [&quot;admin&quot;, &quot;helfer&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Verhalten&quot;},
+  &quot;showUnassignedHint&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Verhalten&quot;},
+  &quot;allowMultipleHelpers&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Verhalten&quot;}
+}">
+
+class Component extends DCLogic {
+  TAGS = ['Zapfen', 'Kellnern', 'Wertmarkenverkauf'];
+
+  helpersSeed = [
+    { id: 'h1', name: 'Anna Bauer', tags: ['Zapfen'], roleTagId: 'freiwillig' },
+    { id: 'h2', name: 'Björn Krüger', tags: ['Kellnern'], roleTagId: 'vorstand' },
+    { id: 'h3', name: 'Christine Voss', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig' },
+    { id: 'h4', name: 'Dennis Schmitt', tags: ['Zapfen', 'Kellnern'], roleTagId: 'freiwillig' },
+    { id: 'h5', name: 'Elke Radtke', tags: ['Kellnern'], roleTagId: 'freiwillig' },
+    { id: 'h6', name: 'Frank Ostermann', tags: ['Zapfen'], roleTagId: 'freiwillig', availability: ['schuetzenfest:0', 'schuetzenfest:1'] },
+    { id: 'h7', name: 'Greta Lindemann', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig' },
+    { id: 'h8', name: 'Hannes Peters', tags: ['Kellnern'], roleTagId: 'freiwillig' },
+    { id: 'h9', name: 'Inga Marquardt', tags: ['Zapfen', 'Wertmarkenverkauf'], roleTagId: 'vorstand' },
+    { id: 'h10', name: 'Jonas Wiechert', tags: ['Kellnern'], roleTagId: 'freiwillig' },
+    { id: 'h11', name: 'Karin Sellmann', tags: ['Zapfen'], roleTagId: 'freiwillig' },
+    { id: 'h12', name: 'Lukas Nowak', tags: ['Kellnern', 'Zapfen'], roleTagId: 'freiwillig' },
+    { id: 'h13', name: 'Marie Thelen', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig', availability: ['jubel:0', 'jubel:1'] },
+    { id: 'h14', name: 'Niklas Brandt', tags: ['Zapfen'], roleTagId: 'freiwillig' }
+  ];
+
+  roleTagsSeed = [
+    { id: 'vorstand', label: 'Vorstand', color: 'oklch(60% 0.13 30)' },
+    { id: 'freiwillig', label: 'Freiw. Helfer', color: 'oklch(56% 0.13 175)' }
+  ];
+
+  colorSwatches = ['oklch(60% 0.13 30)', 'oklch(56% 0.13 175)', 'oklch(60% 0.13 145)', 'oklch(60% 0.13 265)', 'oklch(60% 0.13 0)'];
+
+  DESC = {
+    'Zapfen Bierwagen 1': 'Ausschank am großen Bierwagen',
+    'Zapfen Bierwagen 2': 'Ausschank am kleinen Bierwagen',
+    'Bedienung Festzelt': 'Getränke & Speisen im Festzelt',
+    'Bedienung Biergarten': 'Service im Biergarten',
+    'Kasse Haupteingang': 'Wertmarkenverkauf am Haupteingang',
+    'Kasse Seiteneingang': 'Wertmarkenverkauf am Seiteneingang'
+  };
+
+  mkShift(name, tag, start, end, assigned) {
+    return { name, tag, start, end, desc: this.DESC[name] || '', assigned };
+  }
+
+  eventsSeed = {
+    schuetzenfest: {
+      name: 'Schützenfest',
+      days: [
+        { label: 'Fr., 14. Aug', shifts: [
+          this.mkShift('Zapfen Bierwagen 1', 'Zapfen', '17:00', '21:00', ['h1']),
+          this.mkShift('Zapfen Bierwagen 2', 'Zapfen', '19:00', '23:00', []),
+          this.mkShift('Bedienung Festzelt', 'Kellnern', '18:00', '22:00', ['h2', 'h4']),
+          this.mkShift('Bedienung Biergarten', 'Kellnern', '17:00', '20:00', ['h5']),
+          this.mkShift('Kasse Haupteingang', 'Wertmarkenverkauf', '16:00', '20:00', ['h3']),
+          this.mkShift('Kasse Seiteneingang', 'Wertmarkenverkauf', '18:00', '22:00', [])
+        ]},
+        { label: 'Sa., 15. Aug', shifts: [
+          this.mkShift('Zapfen Bierwagen 1', 'Zapfen', '12:00', '16:00', ['h6']),
+          this.mkShift('Zapfen Bierwagen 2', 'Zapfen', '16:00', '20:00', ['h1', 'h9']),
+          this.mkShift('Bedienung Festzelt', 'Kellnern', '12:00', '16:00', ['h8']),
+          this.mkShift('Bedienung Biergarten', 'Kellnern', '16:00', '20:00', []),
+          this.mkShift('Kasse Haupteingang', 'Wertmarkenverkauf', '11:00', '15:00', ['h3']),
+          this.mkShift('Kasse Seiteneingang', 'Wertmarkenverkauf', '15:00', '19:00', ['h13'])
+        ]},
+        { label: 'So., 16. Aug', shifts: [
+          this.mkShift('Zapfen Bierwagen 1', 'Zapfen', '10:00', '13:00', ['h9']),
+          this.mkShift('Zapfen Bierwagen 2', 'Zapfen', '13:00', '16:00', []),
+          this.mkShift('Bedienung Festzelt', 'Kellnern', '10:00', '14:00', ['h2']),
+          this.mkShift('Bedienung Biergarten', 'Kellnern', '11:00', '14:00', ['h5', 'h12']),
+          this.mkShift('Kasse Haupteingang', 'Wertmarkenverkauf', '10:00', '13:00', ['h7']),
+          this.mkShift('Kasse Seiteneingang', 'Wertmarkenverkauf', '12:00', '15:00', [])
+        ]}
+      ]
+    },
+    jubel: {
+      name: 'Jubelschützenfest',
+      days: [
+        { label: 'Sa., 22. Aug', shifts: [
+          this.mkShift('Zapfen Bierwagen 1', 'Zapfen', '17:00', '21:00', ['h4']),
+          this.mkShift('Zapfen Bierwagen 2', 'Zapfen', '19:00', '23:00', ['h6']),
+          this.mkShift('Bedienung Festzelt', 'Kellnern', '18:00', '22:00', ['h11']),
+          this.mkShift('Bedienung Biergarten', 'Kellnern', '17:00', '20:00', []),
+          this.mkShift('Kasse Haupteingang', 'Wertmarkenverkauf', '16:00', '20:00', ['h3']),
+          this.mkShift('Kasse Seiteneingang', 'Wertmarkenverkauf', '18:00', '22:00', ['h14'])
+        ]},
+        { label: 'So., 23. Aug', shifts: [
+          this.mkShift('Zapfen Bierwagen 1', 'Zapfen', '10:00', '13:00', []),
+          this.mkShift('Zapfen Bierwagen 2', 'Zapfen', '13:00', '16:00', ['h1']),
+          this.mkShift('Bedienung Festzelt', 'Kellnern', '10:00', '14:00', ['h8', 'h2']),
+          this.mkShift('Bedienung Biergarten', 'Kellnern', '11:00', '14:00', []),
+          this.mkShift('Kasse Haupteingang', 'Wertmarkenverkauf', '10:00', '13:00', ['h13']),
+          this.mkShift('Kasse Seiteneingang', 'Wertmarkenverkauf', '12:00', '15:00', ['h7'])
+        ]}
+      ]
+    }
+  };
+
+  seedIds() {
+    const clone = JSON.parse(JSON.stringify(this.eventsSeed));
+    let n = 0;
+    Object.values(clone).forEach(ev => {
+      ev.ablaufplan = ev.ablaufplan || '';
+      ev.tags = ev.tags || [...this.TAGS];
+      ev.days.forEach(day => {
+        day.dayStart = day.dayStart || '10:00';
+        day.dayEnd = day.dayEnd || '00:00';
+        day.shifts.forEach(sh => { sh.id = 's' + (n++); });
+      });
+    });
+    return clone;
+  }
+
+  state = {
+    mode: null,
+    eventId: 'schuetzenfest',
+    dayIdx: 0,
+    eventsData: this.seedIds(),
+    poolTagFilter: null,
+    poolSearch: '',
+    dragHelperId: null,
+    dragOverShiftId: null,
+    modal: null,
+    modalError: null,
+    confirmDeleteId: null,
+    helferEventId: 'schuetzenfest',
+    helferNameFilter: '',
+    dragSelect: null,
+    eventModal: null,
+    eventModalError: null,
+    helpers: this.helpersSeed.map(h => ({ ...h, tags: [...h.tags], availability: h.availability ? [...h.availability] : null })),
+    roleTags: [...this.roleTagsSeed],
+    helperModal: null,
+    helperModalError: null,
+    ablaufplanModal: null,
+    mobilePreviewOpen: false,
+    tagsModal: null
+  };
+
+  WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+
+  formatDayLabel(d) {
+    return this.WEEKDAYS[d.getDay()] + ', ' + d.getDate().toString().padStart(2, '0') + '. ' + d.toLocaleDateString('de-DE', { month: 'short' });
+  }
+
+  createEvent(name, startStr, endStr) {
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    const days = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push({ label: this.formatDayLabel(d), shifts: [], dayStart: '10:00', dayEnd: '00:00' });
+    }
+    const id = 'ev-' + Date.now();
+    this.setState(s => ({
+      eventsData: { ...s.eventsData, [id]: { name, days, ablaufplan: '', tags: [...this.TAGS] } },
+      eventId: id, dayIdx: 0,
+      eventModal: null, eventModalError: null
+    }));
+  }
+
+  HOUR_START = 10;
+  HOUR_END = 24;
+  PX_PER_HOUR = 56;
+
+  timeToMin(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+  minToTime(m) { const clock = ((m % 1440) + 1440) % 1440; const h = Math.floor(clock / 140), mm = clock % 60; return h.toString().padStart(2, '0') + ':' + mm.toString().padStart(2, '0'); }
+  resolveMin(clockMin, baseMin) { return clockMin < baseMin ? clockMin + 1440 : clockMin; }
+  formatTick(m) { const clock = ((m % 1440) + 1440) % 1440; const h = Math.floor(clock / 140), mm = clock % 60; return h.toString().padStart(2, '0') + ':' + mm.toString().padStart(2, '0'); }
+  yToMin(y, baseMin, maxMin) {
+    let m = baseMin + (y / this.PX_PER_HOUR) * 60;
+    m = Math.round(m / 15) * 15;
+    return Math.max(baseMin, Math.min(maxMin, m));
+  }
+  updateDayMeta(eventId, dayIdx, field, value) {
+    this.setState(s => {
+      const eventsData = { ...s.eventsData };
+      const ev = { ...eventsData[eventId] };
+      const days = ev.days.slice();
+      days[dayIdx] = { ...days[dayIdx], [field]: value };
+      ev.days = days;
+      eventsData[eventId] = ev;
+      return { eventsData };
+    });
+  }
+
+  effectiveMode() { return this.state.mode || this.props.defaultMode || 'admin'; }
+  allowMulti() { return this.props.allowMultipleHelpers !== false; }
+  showHint() { return this.props.showUnassignedHint !== false; }
+
+  updateShifts(eventId, dayIdx, fn) {
+    this.setState(s => {
+      const eventsData = { ...s.eventsData };
+      const ev = { ...eventsData[eventId] };
+      const days = ev.days.slice();
+      const day = { ...days[dayIdx] };
+      day.shifts = fn(day.shifts);
+      days[dayIdx] = day;
+      ev.days = days;
+      eventsData[eventId] = ev;
+      return { eventsData };
+    });
+  }
+
+  assignHelper(eventId, dayIdx, shiftId, helperId) {
+    this.updateShifts(eventId, dayIdx, shifts => shifts.map(sh => {
+      if (sh.id !== shiftId || sh.assigned.includes(helperId)) return sh;
+      if (!this.allowMulti()) return { ...sh, assigned: [helperId] };
+      return { ...sh, assigned: [...sh.assigned, helperId] };
+    }));
+  }
+
+  removeHelper(eventId, dayIdx, shiftId, helperId) {
+    this.updateShifts(eventId, dayIdx, shifts => shifts.map(sh =>
+      sh.id !== shiftId ? sh : { ...sh, assigned: sh.assigned.filter(id => id !== helperId) }));
+  }
+
+  deleteShift(eventId, dayIdx, shiftId) {
+    this.updateShifts(eventId, dayIdx, shifts => shifts.filter(sh => sh.id !== shiftId));
+    this.setState({ confirmDeleteId: null });
+  }
+
+  nameById(id) { const h = this.state.helpers.find(x => x.id === id); return h ? h.name : ''; }
+  formatDuration(min) { const h = Math.floor(min / 140), m = min % 60; return h + 'h' + (m ? ' ' + m + 'min' : ''); }
+
+  updateEventMeta(eventId, field, value) {
+    this.setState(s => ({ eventsData: { ...s.eventsData, [eventId]: { ...s.eventsData[eventId], [field]: value } } }));
+  }
+
+  allDayKeysWithLabels() {
+    const out = [];
+    Object.entries(this.state.eventsData).forEach(([evId, ev]) => ev.days.forEach((d, i) => out.push({ key: evId + ':' + i, label: ev.name + ' – ' + d.label })));
+    return out;
+  }
+  allDayKeys() { return this.allDayKeysWithLabels().map(d => d.key); }
+
+  toggleHelperAvailability(key) {
+    this.setState(st => {
+      const cur = st.helperModal.availability;
+      const allKeys = this.allDayKeys();
+      let arr = cur === null ? allKeys.slice() : [...cur];
+      const idx = arr.indexOf(key);
+      if (idx >= 0) arr.splice(idx, 1); else arr.push(key);
+      if (arr.length === allKeys.length) arr = null;
+      return { helperModal: { ...st.helperModal, availability: arr } };
+    });
+  }
+
+  isHelperAvailable(helper, eventId, dayIdx) {
+    if (!helper.availability) return true;
+    return helper.availability.includes(eventId + ':' + dayIdx);
+  }
+
+  allTagNames() {
+    const set = new Set();
+    Object.values(this.state.eventsData).forEach(ev => (ev.tags || []).forEach(t => set.add(t)));
+    return [...set];
+  }
+
+  saveTagsModalImpl() {
+    const items = this.state.tagsModal.items;
+    const names = items.map(i => i.name.trim());
+    if (names.some(n => !n)) { this.setState(st => ({ tagsModal: { ...st.tagsModal, error: 'Spaltennamen dürfen nicht leer sein.' } })); return; }
+    if (new Set(names).size !== names.length) { this.setState(st => ({ tagsModal: { ...st.tagsModal, error: 'Spaltennamen müssen eindeutig sein.' } })); return; }
+    const eventId = this.state.eventId;
+    const event = this.state.eventsData[eventId];
+    const removed = event.tags.filter(t => !items.some(i => i.original === t));
+    for (const t of removed) {
+      const usage = event.days.reduce((sum, d) => sum + d.shifts.filter(sh => sh.tag === t).length, 0);
+      if (usage > 0) { this.setState(st => ({ tagsModal: { ...st.tagsModal, error: `Spalte "${t}" wird noch von Schichten verwendet.` } })); return; }
+    }
+    const renameMap = {};
+    items.forEach(i => { const n = i.name.trim(); if (i.original && i.original !== n) renameMap[i.original] = n; });
+    this.setState(s => {
+      const eventsData = { ...s.eventsData };
+      const ev = { ...eventsData[eventId] };
+      ev.tags = names;
+      ev.days = ev.days.map(d => ({ ...d, shifts: d.shifts.map(sh => renameMap[sh.tag] ? { ...sh, tag: renameMap[sh.tag] } : sh) }));
+      eventsData[eventId] = ev;
+      return { eventsData, tagsModal: null };
+    });
+  }
+
+  layoutOverlaps(items) {
+    const sorted = [...items].sort((a, b) => a._start - b._start);
+    let clusters = [], cur = null;
+    sorted.forEach(sh => {
+      if (!cur || sh._start >= cur.maxEnd) { cur = { items: [sh], maxEnd: sh._end }; clusters.push(cur); }
+      else { cur.items.push(sh); cur.maxEnd = Math.max(cur.maxEnd, sh._end); }
+    });
+    clusters.forEach(cluster => {
+      const laneEnds = [];
+      cluster.items.forEach(sh => {
+        let laneIdx = laneEnds.findIndex(end => end <= sh._start);
+        if (laneIdx === -1) { laneIdx = laneEnds.length; laneEnds.push(sh._end); }
+        else laneEnds[laneIdx] = sh._end;
+        sh._lane = laneIdx;
+      });
+      cluster.items.forEach(sh => { sh._lanes = laneEnds.length; });
+    });
+    return sorted;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const mode = this.effectiveMode();
+    const isAdmin = mode === 'admin';
+    const helpers = s.helpers;
+    const eventOptions = Object.keys(this.eventsSeed).map(id => ({ id, name: this.eventsSeed[id].name }));
+    const event = s.eventsData[s.eventId];
+    const day = event.days[s.dayIdx];
+
+    const dayTabs = event.days.map((d, i) => ({
+      label: d.label,
+      onClick: () => this.setState({ dayIdx: i }),
+      style: `padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:${i === s.dayIdx ? '#fff' : 'transparent'};color:${i === s.dayIdx ? 'oklch(22% 0.01 140)' : 'oklch(48% 0.01 140)'};box-shadow:${i === s.dayIdx ? '0 1px 2px rgba(0,0,0,0.08)' : 'none'}`
+    }));
+
+    const dayStart = day.dayStart || '10:00';
+    const dayEnd = day.dayEnd || '00:00';
+    const dayStartMin = this.timeToMin(dayStart);
+    const dayEndRaw = this.timeToMin(dayEnd);
+    const dayEndMin = dayEndRaw <= dayStartMin ? dayEndRaw + 1440 : dayEndRaw;
+    const overnight = dayEndMin > 1440;
+
+    const hourTicks = [];
+    for (let m = Math.floor(dayStartMin / 140) * 60; m <= dayEndMin; m += 140) {
+      hourTicks.push({ label: this.formatTick(m), top: (m - dayStartMin) / 60 * this.PX_PER_HOUR });
+    }
+    const timelineHeight = (dayEndMin - dayStartMin) / 60 * this.PX_PER_HOUR;
+
+    const columns = event.tags.map(tag => {
+      const ds = s.dragSelect;
+      let dragPreview = null;
+      if (ds && ds.tag === tag) {
+        const yMin = Math.min(ds.startY, ds.endY), yMax = Math.max(ds.startY, ds.endY);
+        const top = yMin, height = Math.max(yMax - yMin, 2);
+        const startMin = this.yToMin(yMin, dayStartMin, dayEndMin), endMin = Math.max(this.yToMin(yMax, dayStartMin, dayEndMin), startMin + 15);
+        dragPreview = { top, height, label: this.minToTime(startMin) + '–' + this.minToTime(endMin) };
+      }
+      return { tag, dragPreview,
+      onMouseDown: (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        this.setState({ dragSelect: { tag, startY: y, endY: y } });
+      },
+      onMouseMove: (e) => {
+        if (!this.state.dragSelect || this.state.dragSelect.tag !== tag) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        this.setState(st => ({ dragSelect: { ...st.dragSelect, endY: y } }));
+      },
+      onMouseUp: (e) => {
+        const cur = this.state.dragSelect;
+        if (!cur || cur.tag !== tag) return;
+        const deltaPx = Math.abs(cur.endY - cur.startY);
+        const yMin = Math.min(cur.startY, cur.endY);
+        const startMin = this.yToMin(yMin, dayStartMin, dayEndMin);
+        const endMin = deltaPx < 8 ? startMin + 60 : Math.max(this.yToMin(Math.max(cur.startY, cur.endY), dayStartMin, dayEndMin), startMin + 15);
+        this.setState({ dragSelect: null, modal: { mode: 'create', form: { name: '', desc: '', tag, start: this.minToTime(startMin), end: this.minToTime(endMin) } }, modalError: null });
+      },
+      shifts: this.layoutOverlaps(day.shifts.filter(sh => sh.tag === tag).map(sh => {
+        const shiftStart = this.resolveMin(this.timeToMin(sh.start), dayStartMin);
+        let shiftEnd = this.resolveMin(this.timeToMin(sh.end), dayStartMin);
+        if (shiftEnd <= shiftStart) shiftEnd += 1440;
+        return { ...sh, _start: shiftStart, _end: shiftEnd };
+      })).map(sh => {
+        const top = (sh._start - dayStartMin) / 60 * this.PX_PER_HOUR;
+        const height = (sh._end - sh._start) / 60 * this.PX_PER_HOUR - 4;
+        const unassigned = sh.assigned.length === 0;
+        const dragOver = s.dragOverShiftId === sh.id;
+        let border = '1px solid oklch(88% 0.006 140)';
+        let bg = '#fff';
+        if (dragOver) { border = '2px solid oklch(56% 0.13 175)'; bg = 'oklch(93% 0.04 175)'; }
+        else if (unassigned && this.showHint()) { border = '1px dashed oklch(70% 0.1 30)'; bg = 'oklch(97% 0.02 30)'; }
+        const confirming = s.confirmDeleteId === sh.id;
+        const leftPct = (sh._lane / sh._lanes) * 100;
+        const widthPct = 100 / sh._lanes;
+        return {
+          id: sh.id, name: sh.name, start: sh.start, end: sh.end, desc: sh.desc,
+          confirming, notConfirming: !confirming,
+          showUnassignedLabel: unassigned,
+          blockStyle: `position:absolute;left:calc(${leftPct}% + 4px);width:calc(${widthPct}% - 8px);top:${top}px;height:${height}px;padding:10px 10px 8px;border-radius:9px;border:${border};background:${bg};overflow:hidden;transition:background .1s`,
+          onDragOver: (e) => { e.preventDefault(); if (s.dragOverShiftId !== sh.id) this.setState({ dragOverShiftId: sh.id }); },
+          onDragLeave: () => this.setState({ dragOverShiftId: null }),
+          onDrop: (e) => {
+            e.preventDefault();
+            if (s.dragHelperId) this.assignHelper(s.eventId, s.dayIdx, sh.id, s.dragHelperId);
+            this.setState({ dragOverShiftId: null, dragHelperId: null });
+          },
+          startEdit: () => this.setState({ modal: { mode: 'edit', shiftId: sh.id, form: { name: sh.name, desc: sh.desc, tag: sh.tag, start: sh.start, end: sh.end } }, modalError: null }),
+          startDelete: () => this.setState({ confirmDeleteId: sh.id }),
+          confirmDelete: () => this.deleteShift(s.eventId, s.dayIdx, sh.id),
+          cancelDelete: () => this.setState({ confirmDeleteId: null }),
+          assignedChips: sh.assigned.map(hid => ({ name: this.nameById(hid), remove: () => this.removeHelper(s.eventId, s.dayIdx, sh.id, hid) })),
+          stopMouseDown: (e) => e.stopPropagation()
+        };
+      })};
+    });
+
+    const poolTagOptions = [{ id: null, label: 'Alle' }, ...this.allTagNames().map(t => ({ id: t, label: t }))].map(o => ({
+      onClick: () => this.setState({ poolTagFilter: o.id }),
+      label: o.label,
+      style: `padding:5px 11px;border-radius:16px;border:1px solid ${s.poolTagFilter === o.id ? 'oklch(58% 0.13 145)' : 'oklch(87% 0.006 140)'};background:${s.poolTagFilter === o.id ? 'oklch(95% 0.04 145)' : '#fff'};color:${s.poolTagFilter === o.id ? 'oklch(40% 0.13 145)' : 'oklch(40% 0.01 140)'};font-size:12px;font-weight:500;cursor:pointer`
+    }));
+
+    const statsByHelper = {};
+    event.days.forEach(d => d.shifts.forEach(sh => {
+      const dur = this.timeToMin(sh.end) - this.timeToMin(sh.start);
+      sh.assigned.forEach(hid => {
+        if (!statsByHelper[hid]) statsByHelper[hid] = { count: 0, minutes: 0 };
+        statsByHelper[hid].count++;
+        statsByHelper[hid].minutes += dur;
+      });
+    }));
+
+    const poolHelpers = helpers
+      .filter(h => !s.poolTagFilter || h.tags.includes(s.poolTagFilter))
+      .filter(h => !s.poolSearch || h.name.toLowerCase().includes(s.poolSearch.toLowerCase()))
+      .map(h => {
+        const stat = statsByHelper[h.id] || { count: 0, minutes: 0 };
+        const role = s.roleTags.find(r => r.id === h.roleTagId);
+        const available = this.isHelperAvailable(h, s.eventId, s.dayIdx);
+        return {
+          name: h.name,
+          tagsLabel: h.tags.join(' · '),
+          statsLabel: available ? (stat.count + (stat.count === 1 ? ' Schicht' : ' Schichten') + ' · ' + this.formatDuration(stat.minutes)) : 'Nicht verfügbar an diesem Tag',
+          roleLabel: role ? role.label : null,
+          roleColor: role ? role.color : null,
+          available,
+          cardStyle: `padding:9px 12px;border-radius:9px;border:1px solid oklch(89% 0.006 140);background:#fff;cursor:${available ? 'grab' : 'not-allowed'};user-select:none;opacity:${available ? 1 : 0.45}`,
+          onDragStart: () => { if (available) this.setState({ dragHelperId: h.id }); },
+          onDragEnd: () => this.setState({ dragHelperId: null, dragOverShiftId: null })
+        };
+      });
+
+    const helferEvent = s.eventsData[s.helferEventId];
+    const filter = s.helferNameFilter.trim().toLowerCase();
+    const helferDays = helferEvent.days.map(d => {
+      const base = this.timeToMin(d.dayStart || '10:00');
+      const sorted = [...d.shifts].sort((a, b) => this.resolveMin(this.timeToMin(a.start), base) - this.resolveMin(this.timeToMin(b.start), base));
+      return {
+      label: d.label,
+      shifts: sorted.map((sh, idx) => {
+        const names = sh.assigned.map(id => this.nameById(id));
+        const match = filter && names.some(n => n.toLowerCase().includes(filter));
+        const unassigned = sh.assigned.length === 0;
+        let bg = '#fff', border = '1px solid oklch(89% 0.006 140)', accent = 'oklch(85% 0.006 140)';
+        if (match) { bg = 'oklch(93% 0.04 175)'; border = '1px solid oklch(56% 0.13 175)'; accent = 'oklch(56% 0.13 175)'; }
+        else if (unassigned && this.showHint()) { bg = 'oklch(97% 0.015 30)'; border = '1px solid oklch(82% 0.05 30)'; accent = 'oklch(65% 0.1 30)'; }
+        return {
+          start: sh.start, end: sh.end, name: sh.name, tag: sh.tag, desc: sh.desc,
+          assignedLabel: names.length ? names.join(', ') : 'Unbesetzt',
+          rowStyle: `display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:10px;background:${bg};border:${border}`,
+          mobileRowStyle: `display:flex;align-items:stretch;${idx === sorted.length - 1 ? '' : 'border-bottom:0.5px solid oklch(90% 0.006 140);'}`,
+          mobileAccent: accent
+        };
+      })
+    };});
+
+    return {
+      isAdmin, isHelfer: !isAdmin,
+      adminTabStyle: `padding:7px 16px;border-radius:8px;border:none;font-size:13.5px;font-weight:600;cursor:pointer;background:${isAdmin ? '#fff' : 'transparent'};color:${isAdmin ? 'oklch(22% 0.01 140)' : 'oklch(48% 0.01 140)'};box-shadow:${isAdmin ? '0 1px 2px rgba(0,0,0,0.08)' : 'none'}`,
+      helferTabStyle: `padding:7px 16px;border-radius:8px;border:none;font-size:13.5px;font-weight:600;cursor:pointer;background:${!isAdmin ? '#fff' : 'transparent'};color:${!isAdmin ? 'oklch(22% 0.01 140)' : 'oklch(48% 0.01 140)'};box-shadow:${!isAdmin ? '0 1px 2px rgba(0,0,0,0.08)' : 'none'}`,
+      setModeAdmin: () => this.setState({ mode: 'admin' }),
+      setModeHelfer: () => this.setState({ mode: 'helfer' }),
+      eventOptions,
+      eventId: s.eventId,
+      onEventChange: (e) => this.setState({ eventId: e.target.value, dayIdx: 0 }),
+      eventName: event.name,
+      openTagsModal: () => this.setState({ tagsModal: { items: event.tags.map(t => ({ name: t, original: t })), newTag: '', error: null } }),
+      tagsModalOpen: !!s.tagsModal,
+      tagsModalError: s.tagsModal ? s.tagsModal.error : null,
+      tagsModalNewTag: s.tagsModal ? s.tagsModal.newTag : '',
+      onTagsModalNewTag: (e) => this.setState(st => ({ tagsModal: { ...st.tagsModal, newTag: e.target.value } })),
+      addTagsModalRow: () => this.setState(st => {
+        const name = st.tagsModal.newTag.trim();
+        if (!name) return {};
+        return { tagsModal: { ...st.tagsModal, items: [...st.tagsModal.items, { name, original: null }], newTag: '' } };
+      }),
+      closeTagsModal: () => this.setState({ tagsModal: null }),
+      saveTagsModal: () => this.saveTagsModalImpl(),
+      tagsModalRows: s.tagsModal ? s.tagsModal.items.map((item, idx) => {
+        const usage = event.days.reduce((sum, d) => sum + d.shifts.filter(sh => sh.tag === item.original).length, 0);
+        return {
+          name: item.name,
+          usage,
+          hasUsage: usage > 0,
+          deleteDisabled: usage > 0,
+          onNameChange: (e) => this.setState(st => { const items = [...st.tagsModal.items]; items[idx] = { ...items[idx], name: e.target.value }; return { tagsModal: { ...st.tagsModal, items } }; }),
+          remove: () => this.setState(st => ({ tagsModal: { ...st.tagsModal, items: st.tagsModal.items.filter((_, i) => i !== idx) } }))
+        };
+      }) : [],
+      hasAblaufplan: !!(event.ablaufplan && event.ablaufplan.trim()),
+      openAblaufplanModal: () => this.setState({ ablaufplanModal: { text: event.ablaufplan || '' } }),
+      ablaufplanModalOpen: !!s.ablaufplanModal,
+      ablaufplanText: s.ablaufplanModal ? s.ablaufplanModal.text : '',
+      onAblaufplanText: (e) => this.setState(st => ({ ablaufplanModal: { text: e.target.value } })),
+      closeAblaufplanModal: () => this.setState({ ablaufplanModal: null }),
+      saveAblaufplanModal: () => { this.updateEventMeta(s.eventId, 'ablaufplan', this.state.ablaufplanModal.text); this.setState({ ablaufplanModal: null }); },
+      togglePreview: () => this.setState(st => ({ mobilePreviewOpen: !st.mobilePreviewOpen })),
+      mobilePreviewOpen: s.mobilePreviewOpen,
+      mobileEventOptions: eventOptions.map(ev => ({
+        name: ev.name,
+        onClick: () => this.setState({ helferEventId: ev.id }),
+        style: `flex:1;padding:7px 4px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:${s.helferEventId === ev.id ? '#fff' : 'transparent'};color:${s.helferEventId === ev.id ? '#000' : 'oklch(45% 0.01 140)'};box-shadow:${s.helferEventId === ev.id ? '0 1px 3px rgba(0,0,0,0.12)' : 'none'}`
+      })),
+      openEventModal: () => this.setState({ eventModal: { name: '', start: '', end: '' }, eventModalError: null }),
+      eventModalOpen: !!s.eventModal,
+      eventModalForm: s.eventModal || { name: '', start: '', end: '' },
+      eventModalError: s.eventModalError,
+      onEventModalName: (e) => this.setState(st => ({ eventModal: { ...st.eventModal, name: e.target.value } })),
+      onEventModalStart: (e) => this.setState(st => ({ eventModal: { ...st.eventModal, start: e.target.value } })),
+      onEventModalEnd: (e) => this.setState(st => ({ eventModal: { ...st.eventModal, end: e.target.value } })),
+      closeEventModal: () => this.setState({ eventModal: null, eventModalError: null }),
+      saveEventModal: () => {
+        const f = this.state.eventModal;
+        if (!f.name.trim()) { this.setState({ eventModalError: 'Bitte einen Namen eingeben.' }); return; }
+        if (!f.start || !f.end) { this.setState({ eventModalError: 'Bitte Start- und Enddatum wählen.' }); return; }
+        if (new Date(f.end) < new Date(f.start)) { this.setState({ eventModalError: 'Enddatum darf nicht vor dem Startdatum liegen.' }); return; }
+        this.createEvent(f.name.trim(), f.start, f.end);
+      },
+      dayTabs, hourTicks, timelineHeight, columns, overnight,
+      dayStartValue: dayStart, dayEndValue: dayEnd,
+      onDayStartChange: (e) => this.updateDayMeta(s.eventId, s.dayIdx, 'dayStart', e.target.value),
+      onDayEndChange: (e) => this.updateDayMeta(s.eventId, s.dayIdx, 'dayEnd', e.target.value),
+      poolSearch: s.poolSearch,
+      onPoolSearch: (e) => this.setState({ poolSearch: e.target.value }),
+      poolTagOptions, poolHelpers,
+      openHelperModal: () => this.setState({ helperModal: { name: '', tags: [], roleTagId: s.roleTags[0] ? s.roleTags[0].id : null, newTagLabel: '', newTagColor: this.colorSwatches[0], availability: null }, helperModalError: null }),
+      helperModalAvailabilityOptions: this.allDayKeysWithLabels().map(d => ({
+        key: d.key, label: d.label,
+        checked: s.helperModal ? (s.helperModal.availability === null || s.helperModal.availability.includes(d.key)) : true,
+        toggle: () => this.toggleHelperAvailability(d.key)
+      })),
+      helperModalOpen: !!s.helperModal,
+      helperModalError: s.helperModalError,
+      helperModalName: s.helperModal ? s.helperModal.name : '',
+      onHelperModalName: (e) => this.setState(st => ({ helperModal: { ...st.helperModal, name: e.target.value } })),
+      helperModalTagOptions: this.allTagNames().map(t => ({
+        label: t,
+        selected: s.helperModal ? s.helperModal.tags.includes(t) : false,
+        toggle: () => this.setState(st => {
+          const has = st.helperModal.tags.includes(t);
+          return { helperModal: { ...st.helperModal, tags: has ? st.helperModal.tags.filter(x => x !== t) : [...st.helperModal.tags, t] } };
+        })
+      })),
+      helperModalRoleOptions: s.roleTags.map(r => ({
+        id: r.id, label: r.label, color: r.color,
+        selected: s.helperModal ? s.helperModal.roleTagId === r.id : false,
+        select: () => this.setState(st => ({ helperModal: { ...st.helperModal, roleTagId: r.id } }))
+      })),
+      helperModalNewTagLabel: s.helperModal ? s.helperModal.newTagLabel : '',
+      onHelperModalNewTagLabel: (e) => this.setState(st => ({ helperModal: { ...st.helperModal, newTagLabel: e.target.value } })),
+      colorSwatchOptions: this.colorSwatches.map(c => ({
+        color: c,
+        selected: s.helperModal ? s.helperModal.newTagColor === c : false,
+        select: () => this.setState(st => ({ helperModal: { ...st.helperModal, newTagColor: c } }))
+      })),
+      addNewRoleTag: () => {
+        const f = this.state.helperModal;
+        if (!f.newTagLabel.trim()) return;
+        const id = 'role-' + Date.now();
+        this.setState(st => ({
+          roleTags: [...st.roleTags, { id, label: f.newTagLabel.trim(), color: f.newTagColor }],
+          helperModal: { ...st.helperModal, roleTagId: id, newTagLabel: '' }
+        }));
+      },
+      closeHelperModal: () => this.setState({ helperModal: null, helperModalError: null }),
+      saveHelperModal: () => {
+        const f = this.state.helperModal;
+        if (!f.name.trim()) { this.setState({ helperModalError: 'Bitte einen Namen eingeben.' }); return; }
+        if (f.tags.length === 0) { this.setState({ helperModalError: 'Bitte mindestens einen Tätigkeits-Tag wählen.' }); return; }
+        const id = 'h-' + Date.now();
+        this.setState(st => ({
+          helpers: [...st.helpers, { id, name: f.name.trim(), tags: f.tags, roleTagId: f.roleTagId, availability: f.availability }],
+          helperModal: null, helperModalError: null
+        }));
+      },
+      openCreateModal: () => this.setState({ modal: { mode: 'create', form: { name: '', desc: '', tag: event.tags[0], start: '12:00', end: '14:00' } }, modalError: null }),
+      helferEventId: s.helferEventId,
+      onHelferEventChange: (e) => this.setState({ helferEventId: e.target.value }),
+      helferNameFilter: s.helferNameFilter,
+      onHelferNameFilter: (e) => this.setState({ helferNameFilter: e.target.value }),
+      helferDays,
+      modalOpen: !!s.modal,
+      modalTitle: s.modal ? (s.modal.mode === 'create' ? 'Neue Schicht' : 'Schicht bearbeiten') : '',
+      modalForm: s.modal ? s.modal.form : { name: '', desc: '', tag: '', start: '', end: '' },
+      modalError: s.modalError,
+      tagOptions: event.tags,
+      onModalName: (e) => this.setState(st => ({ modal: { ...st.modal, form: { ...st.modal.form, name: e.target.value } } })),
+      onModalDesc: (e) => this.setState(st => ({ modal: { ...st.modal, form: { ...st.modal.form, desc: e.target.value } } })),
+      onModalTag: (e) => this.setState(st => ({ modal: { ...st.modal, form: { ...st.modal.form, tag: e.target.value } } })),
+      onModalStart: (e) => this.setState(st => ({ modal: { ...st.modal, form: { ...st.modal.form, start: e.target.value } } })),
+      onModalEnd: (e) => this.setState(st => ({ modal: { ...st.modal, form: { ...st.modal.form, end: e.target.value } } })),
+      closeModal: () => this.setState({ modal: null, modalError: null }),
+      saveModal: () => {
+        const { mode: mmode, form, shiftId } = this.state.modal;
+        if (!form.name.trim()) { this.setState({ modalError: 'Bitte einen Namen eingeben.' }); return; }
+        if (this.timeToMin(form.end) <= this.timeToMin(form.start)) { this.setState({ modalError: 'Ende muss nach dem Start liegen.' }); return; }
+        const eventId = this.state.eventId, dayIdx = this.state.dayIdx;
+        if (mmode === 'create') {
+          const id = eventId + '-' + dayIdx + '-' + Date.now();
+          this.updateShifts(eventId, dayIdx, shifts => [...shifts, { id, name: form.name, desc: form.desc, tag: form.tag, start: form.start, end: form.end, assigned: [] }]);
+        } else {
+          this.updateShifts(eventId, dayIdx, shifts => shifts.map(sh => sh.id !== shiftId ? sh : { ...sh, name: form.name, desc: form.desc, tag: form.tag, start: form.start, end: form.end }));
+        }
+        this.setState({ modal: null, modalError: null });
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>
