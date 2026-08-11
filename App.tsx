@@ -1,20 +1,26 @@
+import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, StyleSheet } from 'react-native';
+import { Header, type Mode } from './src/components/Header';
+import { AdminGate } from './src/features/admin/AdminGate';
+import { HelferScreen } from './src/features/helfer/HelferScreen';
+import { AuthProvider } from './src/shared/auth/AuthContext';
+import { colors } from './src/shared/theme/colors';
 
 export default function App() {
+  const [mode, setMode] = useState<Mode>('admin');
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <AuthProvider>
+      <SafeAreaView style={styles.container}>
+        <Header mode={mode} onModeChange={setMode} />
+        {mode === 'admin' ? <AdminGate /> : <HelferScreen />}
+        <StatusBar style="auto" />
+      </SafeAreaView>
+    </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
 });
