@@ -34,5 +34,6 @@ export const api = {
   assignHelper: backend.assignHelper,
   unassignHelper: backend.unassignHelper,
   createHelper: backend.createHelper,
+  createRoleTag: backend.createRoleTag,
   subscribeShifts: isSupabaseConfigured ? supabaseBackend.subscribeShifts : () => () => {},
 };

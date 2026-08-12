@@ -93,6 +93,17 @@ export function AdminScreen() {
     api.getDaySettings(eventId, currentDate).then(setDaySettings);
   }, [eventId, currentDate]);
 
+  const availabilityOptions = useMemo(
+    () =>
+      events.flatMap((ev) =>
+        dateRange(ev.startDate, ev.endDate).map((date) => ({
+          key: `${ev.id}:${date}`,
+          label: `${ev.name} – ${formatDayLabel(date)}`,
+        }))
+      ),
+    [events]
+  );
+
   const usageByTag = useMemo(() => {
     const out: Record<string, number> = {};
     for (const s of shifts) out[s.tagId] = (out[s.tagId] ?? 0) + 1;
@@ -170,6 +181,7 @@ export function AdminScreen() {
         tags={tags}
         roleTags={roleTags}
         statsByHelper={statsByHelper}
+        availabilityKey={eventId && currentDate ? `${eventId}:${currentDate}` : ''}
         dragEnabled={dragEnabled}
         selectedHelperId={selectedHelperId}
         onSelectHelper={setSelectedHelperId}
@@ -318,11 +330,17 @@ export function AdminScreen() {
         visible={helperModalOpen}
         tags={tags}
         roleTags={roleTags}
+        availabilityOptions={availabilityOptions}
         onClose={() => setHelperModalOpen(false)}
         onSave={async (value) => {
           const created = await api.createHelper(value);
           setHelpers((cur) => [...cur, created]);
           setHelperModalOpen(false);
+        }}
+        onCreateRoleTag={async (name, color) => {
+          const created = await api.createRoleTag(name, color);
+          setRoleTags((cur) => [...cur, created]);
+          return created;
         }}
       />
     </View>

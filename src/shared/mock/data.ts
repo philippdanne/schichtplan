@@ -13,20 +13,32 @@ export const roleTags: RoleTag[] = [
 ];
 
 export const helpers: Helper[] = [
-  { id: 'h1', name: 'Anna Bauer', tags: ['Zapfen'], roleTagId: 'freiwillig' },
-  { id: 'h2', name: 'Björn Krüger', tags: ['Kellnern'], roleTagId: 'vorstand' },
-  { id: 'h3', name: 'Christine Voss', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig' },
-  { id: 'h4', name: 'Dennis Schmitt', tags: ['Zapfen', 'Kellnern'], roleTagId: 'freiwillig' },
-  { id: 'h5', name: 'Elke Radtke', tags: ['Kellnern'], roleTagId: 'freiwillig' },
-  { id: 'h6', name: 'Frank Ostermann', tags: ['Zapfen'], roleTagId: 'freiwillig' },
-  { id: 'h7', name: 'Greta Lindemann', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig' },
-  { id: 'h8', name: 'Hannes Peters', tags: ['Kellnern'], roleTagId: 'freiwillig' },
-  { id: 'h9', name: 'Inga Marquardt', tags: ['Zapfen', 'Wertmarkenverkauf'], roleTagId: 'vorstand' },
-  { id: 'h10', name: 'Jonas Wiechert', tags: ['Kellnern'], roleTagId: 'freiwillig' },
-  { id: 'h11', name: 'Karin Sellmann', tags: ['Zapfen'], roleTagId: 'freiwillig' },
-  { id: 'h12', name: 'Lukas Nowak', tags: ['Kellnern', 'Zapfen'], roleTagId: 'freiwillig' },
-  { id: 'h13', name: 'Marie Thelen', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig' },
-  { id: 'h14', name: 'Niklas Brandt', tags: ['Zapfen'], roleTagId: 'freiwillig' },
+  { id: 'h1', name: 'Anna Bauer', tags: ['Zapfen'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h2', name: 'Björn Krüger', tags: ['Kellnern'], roleTagId: 'vorstand', availability: null },
+  { id: 'h3', name: 'Christine Voss', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h4', name: 'Dennis Schmitt', tags: ['Zapfen', 'Kellnern'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h5', name: 'Elke Radtke', tags: ['Kellnern'], roleTagId: 'freiwillig', availability: null },
+  {
+    id: 'h6',
+    name: 'Frank Ostermann',
+    tags: ['Zapfen'],
+    roleTagId: 'freiwillig',
+    availability: ['schuetzenfest:2026-08-14', 'schuetzenfest:2026-08-15'],
+  },
+  { id: 'h7', name: 'Greta Lindemann', tags: ['Wertmarkenverkauf'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h8', name: 'Hannes Peters', tags: ['Kellnern'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h9', name: 'Inga Marquardt', tags: ['Zapfen', 'Wertmarkenverkauf'], roleTagId: 'vorstand', availability: null },
+  { id: 'h10', name: 'Jonas Wiechert', tags: ['Kellnern'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h11', name: 'Karin Sellmann', tags: ['Zapfen'], roleTagId: 'freiwillig', availability: null },
+  { id: 'h12', name: 'Lukas Nowak', tags: ['Kellnern', 'Zapfen'], roleTagId: 'freiwillig', availability: null },
+  {
+    id: 'h13',
+    name: 'Marie Thelen',
+    tags: ['Wertmarkenverkauf'],
+    roleTagId: 'freiwillig',
+    availability: ['jubel:2026-08-22', 'jubel:2026-08-23'],
+  },
+  { id: 'h14', name: 'Niklas Brandt', tags: ['Zapfen'], roleTagId: 'freiwillig', availability: null },
 ];
 
 export const events: EventSummary[] = [

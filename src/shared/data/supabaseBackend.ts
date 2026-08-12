@@ -25,7 +25,7 @@ function mapEventTag(row: any): EventTag {
 }
 
 function mapHelper(row: any): Helper {
-  return { id: row.id, name: row.name, tags: row.tags ?? [], roleTagId: row.role_tag_id };
+  return { id: row.id, name: row.name, tags: row.tags ?? [], roleTagId: row.role_tag_id, availability: row.availability };
 }
 
 function mapRoleTag(row: any): RoleTag {
@@ -220,11 +220,17 @@ export const supabaseBackend = {
   async createHelper(input: NewHelperInput): Promise<Helper> {
     const { data, error } = await client()
       .from('helpers')
-      .insert({ name: input.name, tags: input.tags, role_tag_id: input.roleTagId })
+      .insert({ name: input.name, tags: input.tags, role_tag_id: input.roleTagId, availability: input.availability })
       .select()
       .single();
     if (error) throw error;
     return mapHelper(data);
+  },
+
+  async createRoleTag(name: string, color: string): Promise<RoleTag> {
+    const { data, error } = await client().from('role_tags').insert({ name, color }).select().single();
+    if (error) throw error;
+    return mapRoleTag(data);
   },
 
   subscribeShifts(eventId: string, onChange: () => void): () => void {

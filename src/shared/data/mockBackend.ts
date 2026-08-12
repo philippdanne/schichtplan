@@ -14,8 +14,8 @@ import type {
 // used whenever no Supabase project is configured (see src/shared/data/api.ts).
 let events: EventSummary[] = seed.events.map((e) => ({ ...e }));
 let eventTags: EventTag[] = seed.eventTags.map((t) => ({ ...t }));
-let helpers: Helper[] = seed.helpers.map((h) => ({ ...h, tags: [...h.tags] }));
-const roleTags: RoleTag[] = seed.roleTags.map((r) => ({ ...r }));
+let helpers: Helper[] = seed.helpers.map((h) => ({ ...h, tags: [...h.tags], availability: h.availability ? [...h.availability] : null }));
+let roleTags: RoleTag[] = seed.roleTags.map((r) => ({ ...r }));
 let shifts: Shift[] = seed.shifts.map((s) => ({ ...s, assignedHelperIds: [...s.assignedHelperIds] }));
 
 let idCounter = 1000;
@@ -127,5 +127,11 @@ export const mockBackend = {
     const helper: Helper = { id: nextId('h'), ...input };
     helpers = [...helpers, helper];
     return delay(helper);
+  },
+
+  createRoleTag: (name: string, color: string) => {
+    const roleTag: RoleTag = { id: nextId('role'), name, color };
+    roleTags = [...roleTags, roleTag];
+    return delay(roleTag);
   },
 };
