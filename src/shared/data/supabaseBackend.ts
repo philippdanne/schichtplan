@@ -95,6 +95,50 @@ export const supabaseBackend = {
     return event;
   },
 
+  async updateEvent(
+    id: string,
+    patch: Partial<Pick<EventSummary, 'name' | 'startDate' | 'endDate' | 'ablaufplan'>>
+  ): Promise<EventSummary> {
+    const row: Record<string, unknown> = {};
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.startDate !== undefined) row.start_date = patch.startDate;
+    if (patch.endDate !== undefined) row.end_date = patch.endDate;
+    if (patch.ablaufplan !== undefined) row.ablaufplan = patch.ablaufplan;
+    const { data, error } = await client().from('events').update(row).eq('id', id).select().single();
+    if (error) throw error;
+    return mapEvent(data);
+  },
+
+  async createEventTag(eventId: string, name: string): Promise<EventTag> {
+    const { count } = await client().from('event_tags').select('id', { count: 'exact', head: true }).eq('event_id', eventId);
+    const { data, error } = await client()
+      .from('event_tags')
+      .insert({ event_id: eventId, name, sort_order: count ?? 0 })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapEventTag(data);
+  },
+
+  async renameEventTag(id: string, name: string): Promise<EventTag> {
+    const { data, error } = await client().from('event_tags').update({ name }).eq('id', id).select().single();
+    if (error) throw error;
+    return mapEventTag(data);
+  },
+
+  async deleteEventTag(id: string): Promise<void> {
+    const usage = await supabaseBackend.tagUsageCount(id);
+    if (usage > 0) throw new Error(`Spalte wird noch von ${usage} Schicht(en) verwendet.`);
+    const { error } = await client().from('event_tags').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async tagUsageCount(id: string): Promise<number> {
+    const { count, error } = await client().from('shifts').select('id', { count: 'exact', head: true }).eq('tag_id', id);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   async createShift(input: NewShiftInput): Promise<Shift> {
     const { data, error } = await client()
       .from('shifts')

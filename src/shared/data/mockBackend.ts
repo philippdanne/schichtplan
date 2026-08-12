@@ -43,6 +43,36 @@ export const mockBackend = {
     return delay(event);
   },
 
+  updateEvent: (id: string, patch: Partial<Pick<EventSummary, 'name' | 'startDate' | 'endDate' | 'ablaufplan'>>) => {
+    events = events.map((e) => (e.id === id ? { ...e, ...patch } : e));
+    const updated = events.find((e) => e.id === id);
+    if (!updated) throw new Error('Event not found');
+    return delay(updated);
+  },
+
+  createEventTag: (eventId: string, name: string) => {
+    const sortOrder = eventTags.filter((t) => t.eventId === eventId).length;
+    const tag: EventTag = { id: nextId('tag'), eventId, name, sortOrder };
+    eventTags = [...eventTags, tag];
+    return delay(tag);
+  },
+
+  renameEventTag: (id: string, name: string) => {
+    eventTags = eventTags.map((t) => (t.id === id ? { ...t, name } : t));
+    const updated = eventTags.find((t) => t.id === id);
+    if (!updated) throw new Error('Tag not found');
+    return delay(updated);
+  },
+
+  deleteEventTag: (id: string) => {
+    const usage = shifts.filter((s) => s.tagId === id).length;
+    if (usage > 0) return Promise.reject(new Error(`Spalte wird noch von ${usage} Schicht(en) verwendet.`));
+    eventTags = eventTags.filter((t) => t.id !== id);
+    return delay(undefined);
+  },
+
+  tagUsageCount: (id: string) => delay(shifts.filter((s) => s.tagId === id).length),
+
   createShift: (input: NewShiftInput) => {
     const shift: Shift = { id: nextId('s'), assignedHelperIds: [], ...input };
     shifts = [...shifts, shift];

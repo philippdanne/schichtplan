@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useDroppable } from '@dnd-kit/core';
 import type { EventTag, Helper, Shift } from '../../../shared/types';
@@ -35,6 +35,7 @@ export function Timeline(props: Props) {
   const height = (HOUR_END - HOUR_START) * PX_PER_HOUR;
   const ticks = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '?';
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   return (
     <View style={styles.wrap}>
@@ -66,8 +67,14 @@ export function Timeline(props: Props) {
                         <ShiftBlockContent
                           shift={shift}
                           helperName={helperName}
+                          confirming={confirmingId === shift.id}
                           onEdit={() => props.onEditShift(shift)}
-                          onDelete={() => props.onDeleteShift(shift.id)}
+                          onStartDelete={() => setConfirmingId(shift.id)}
+                          onCancelDelete={() => setConfirmingId(null)}
+                          onConfirmDelete={() => {
+                            setConfirmingId(null);
+                            props.onDeleteShift(shift.id);
+                          }}
                           onUnassign={(helperId) => props.onUnassign(shift.id, helperId)}
                         />
                       </DroppableShiftBlock>
@@ -84,8 +91,14 @@ export function Timeline(props: Props) {
                         <ShiftBlockContent
                           shift={shift}
                           helperName={helperName}
+                          confirming={confirmingId === shift.id}
                           onEdit={() => props.onEditShift(shift)}
-                          onDelete={() => props.onDeleteShift(shift.id)}
+                          onStartDelete={() => setConfirmingId(shift.id)}
+                          onCancelDelete={() => setConfirmingId(null)}
+                          onConfirmDelete={() => {
+                            setConfirmingId(null);
+                            props.onDeleteShift(shift.id);
+                          }}
                           onUnassign={(helperId) => props.onUnassign(shift.id, helperId)}
                         />
                       </Pressable>
@@ -115,16 +128,37 @@ function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children:
 function ShiftBlockContent({
   shift,
   helperName,
+  confirming,
   onEdit,
-  onDelete,
+  onStartDelete,
+  onCancelDelete,
+  onConfirmDelete,
   onUnassign,
 }: {
   shift: Shift;
   helperName: (id: string) => string;
+  confirming: boolean;
   onEdit: () => void;
-  onDelete: () => void;
+  onStartDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
   onUnassign: (helperId: string) => void;
 }) {
+  if (confirming) {
+    return (
+      <View style={styles.confirmWrap}>
+        <Text style={styles.confirmLabel}>Schicht löschen?</Text>
+        <View style={styles.confirmActions}>
+          <Pressable onPress={onConfirmDelete} style={styles.confirmYes}>
+            <Text style={styles.confirmYesLabel}>Ja</Text>
+          </Pressable>
+          <Pressable onPress={onCancelDelete} style={styles.confirmNo}>
+            <Text style={styles.confirmNoLabel}>Nein</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.blockTopRow}>
@@ -140,7 +174,7 @@ function ShiftBlockContent({
           <Pressable onPress={onEdit} style={styles.iconButton}>
             <Text style={styles.iconButtonLabel}>✎</Text>
           </Pressable>
-          <Pressable onPress={onDelete} style={styles.iconButton}>
+          <Pressable onPress={onStartDelete} style={styles.iconButton}>
             <Text style={styles.iconButtonLabel}>✕</Text>
           </Pressable>
         </View>
@@ -232,4 +266,11 @@ const styles = StyleSheet.create({
   },
   chipRemoveLabel: { fontSize: 9, color: colors.textSecondary },
   unassignedLabel: { fontSize: 11, color: colors.danger, fontWeight: '500' },
+  confirmWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  confirmLabel: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+  confirmActions: { flexDirection: 'row', gap: 8 },
+  confirmYes: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.danger },
+  confirmYesLabel: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  confirmNo: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface },
+  confirmNoLabel: { fontSize: 12, color: colors.textPrimary },
 });

@@ -8,6 +8,8 @@ import { HelperPool } from './components/HelperPool';
 import { ShiftFormModal, type ShiftFormValue } from './components/ShiftFormModal';
 import { EventFormModal } from './components/EventFormModal';
 import { HelperFormModal } from './components/HelperFormModal';
+import { AblaufplanModal } from './components/AblaufplanModal';
+import { TagsModal } from './components/TagsModal';
 import { api } from '../../shared/data/api';
 import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
 import { colors } from '../../shared/theme/colors';
@@ -47,6 +49,8 @@ export function AdminScreen() {
   const [shiftModal, setShiftModal] = useState<{ open: boolean; editing: Shift | null }>({ open: false, editing: null });
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [helperModalOpen, setHelperModalOpen] = useState(false);
+  const [ablaufplanOpen, setAblaufplanOpen] = useState(false);
+  const [tagsModalOpen, setTagsModalOpen] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -78,6 +82,12 @@ export function AdminScreen() {
     () => shifts.filter((s) => s.startTime.slice(0, 10) === currentDate),
     [shifts, currentDate]
   );
+
+  const usageByTag = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const s of shifts) out[s.tagId] = (out[s.tagId] ?? 0) + 1;
+    return out;
+  }, [shifts]);
 
   const statsByHelper = useMemo(() => {
     const out: Record<string, { count: number; minutes: number }> = {};
@@ -160,6 +170,11 @@ export function AdminScreen() {
       <View style={styles.toolbar}>
         <Picker value={eventId} options={events.map((e) => ({ value: e.id, label: e.name }))} onChange={setEventId} />
         <Button label="+ Neues Event" onPress={() => setEventModalOpen(true)} />
+        <View>
+          <Button label="Ablaufplan" onPress={() => setAblaufplanOpen(true)} />
+          {!!event?.ablaufplan && <View style={styles.ablaufplanDot} />}
+        </View>
+        <Button label="Spalten verwalten" onPress={() => setTagsModalOpen(true)} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabs}>
           {days.map((d, i) => (
             <Pressable key={d} onPress={() => setDayIdx(i)} style={[styles.dayTab, i === dayIdx && styles.dayTabActive]}>
@@ -229,6 +244,40 @@ export function AdminScreen() {
         }}
       />
 
+      <AblaufplanModal
+        visible={ablaufplanOpen}
+        eventName={event?.name ?? ''}
+        initialText={event?.ablaufplan ?? ''}
+        onClose={() => setAblaufplanOpen(false)}
+        onSave={async (text) => {
+          if (!eventId) return;
+          const updated = await api.updateEvent(eventId, { ablaufplan: text });
+          setEvents((cur) => cur.map((e) => (e.id === updated.id ? updated : e)));
+          setAblaufplanOpen(false);
+        }}
+      />
+
+      <TagsModal
+        visible={tagsModalOpen}
+        eventName={event?.name ?? ''}
+        tags={tags}
+        usageByTag={usageByTag}
+        onClose={() => setTagsModalOpen(false)}
+        onCreate={async (name) => {
+          if (!eventId) return;
+          const created = await api.createEventTag(eventId, name);
+          setTags((cur) => [...cur, created]);
+        }}
+        onRename={async (id, name) => {
+          const updated = await api.renameEventTag(id, name);
+          setTags((cur) => cur.map((t) => (t.id === updated.id ? updated : t)));
+        }}
+        onDelete={async (id) => {
+          await api.deleteEventTag(id);
+          setTags((cur) => cur.filter((t) => t.id !== id));
+        }}
+      />
+
       <HelperFormModal
         visible={helperModalOpen}
         tags={tags}
@@ -256,6 +305,15 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
     zIndex: 10,
+  },
+  ablaufplanDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
   dayTabs: { flexGrow: 0 },
   dayTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 4 },

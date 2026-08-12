@@ -57,12 +57,8 @@ export function HelferScreen() {
   const tagName = (id: string) => tags.find((t) => t.id === id)?.name ?? '';
 
   const dayGroups: DayGroup[] = useMemo(() => {
-    const filter = nameFilter.trim().toLowerCase();
-    const filtered = filter
-      ? shifts.filter((s) => s.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter)))
-      : shifts;
     const byDate = new Map<string, Shift[]>();
-    for (const s of filtered) {
+    for (const s of shifts) {
       const dateKey = s.startTime.slice(0, 10);
       if (!byDate.has(dateKey)) byDate.set(dateKey, []);
       byDate.get(dateKey)!.push(s);
@@ -74,7 +70,13 @@ export function HelferScreen() {
         label: formatDayLabel(date),
         shifts: [...dayShifts].sort((a, b) => a.startTime.localeCompare(b.startTime)),
       }));
-  }, [shifts, nameFilter, helpers]);
+  }, [shifts]);
+
+  const isOwnShift = (shift: Shift) => {
+    const filter = nameFilter.trim().toLowerCase();
+    if (!filter) return false;
+    return shift.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter));
+  };
 
   return (
     <View style={styles.container}>
@@ -103,24 +105,27 @@ export function HelferScreen() {
           renderItem={({ item: day }) => (
             <View style={styles.dayGroup}>
               <Text style={styles.dayLabel}>{day.label}</Text>
-              {day.shifts.map((shift) => (
-                <View key={shift.id} style={styles.row}>
-                  <Text style={styles.rowTime}>
-                    {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
-                  </Text>
-                  <View style={styles.rowMain}>
-                    <Text style={styles.rowName}>{shift.name}</Text>
-                    <Text style={styles.rowSub}>
-                      {tagName(shift.tagId)} · {shift.description}
+              {day.shifts.map((shift) => {
+                const own = isOwnShift(shift);
+                return (
+                  <View key={shift.id} style={[styles.row, own && styles.rowOwn]}>
+                    <Text style={styles.rowTime}>
+                      {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
+                    </Text>
+                    <View style={styles.rowMain}>
+                      <Text style={[styles.rowName, own && styles.rowNameOwn]}>{shift.name}</Text>
+                      <Text style={styles.rowSub}>
+                        {tagName(shift.tagId)} · {shift.description}
+                      </Text>
+                    </View>
+                    <Text style={styles.rowAssigned} numberOfLines={2}>
+                      {shift.assignedHelperIds.length
+                        ? shift.assignedHelperIds.map(helperName).join(', ')
+                        : 'Unbesetzt'}
                     </Text>
                   </View>
-                  <Text style={styles.rowAssigned} numberOfLines={2}>
-                    {shift.assignedHelperIds.length
-                      ? shift.assignedHelperIds.map(helperName).join(', ')
-                      : 'Unbesetzt'}
-                  </Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         />
@@ -171,9 +176,11 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
   },
+  rowOwn: { borderColor: colors.accent, backgroundColor: colors.tealBg },
   rowTime: { width: 96, fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   rowMain: { flex: 1, minWidth: 0 },
   rowName: { fontSize: 14.5, fontWeight: '600', color: colors.textPrimary },
+  rowNameOwn: { color: colors.accent },
   rowSub: { fontSize: 12.5, color: colors.textSecondary, marginTop: 1 },
   rowAssigned: { maxWidth: 220, textAlign: 'right', fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
 });
