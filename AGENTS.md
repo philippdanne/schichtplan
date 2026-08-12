@@ -68,5 +68,6 @@ cp .env.example .env   # Supabase-URL/Anon-Key eintragen, sonst läuft Mock-Modu
 npm run web             # oder: npm run ios / npm run android
 ```
 
-Supabase-Schema anwenden: `supabase/migrations/0001_init.sql` gegen das
-Projekt ausführen (SQL-Editor oder `supabase db push`).
+Supabase-Schema anwenden: alle Dateien in `supabase/migrations/` der Reihe
+nach (0001, 0002, 0003, …) gegen das Projekt ausführen (SQL-Editor oder
+`supabase db push`).
