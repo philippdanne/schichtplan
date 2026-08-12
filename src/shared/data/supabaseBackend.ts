@@ -139,6 +139,31 @@ export const supabaseBackend = {
     return count ?? 0;
   },
 
+  async getDaySettings(eventId: string, date: string): Promise<{ dayStart: string; dayEnd: string }> {
+    const { data, error } = await client()
+      .from('event_day_settings')
+      .select('day_start, day_end')
+      .eq('event_id', eventId)
+      .eq('date', date)
+      .maybeSingle();
+    if (error) throw error;
+    return { dayStart: data?.day_start?.slice(0, 5) ?? '10:00', dayEnd: data?.day_end?.slice(0, 5) ?? '00:00' };
+  },
+
+  async updateDaySettings(
+    eventId: string,
+    date: string,
+    patch: { dayStart?: string; dayEnd?: string }
+  ): Promise<{ dayStart: string; dayEnd: string }> {
+    const current = await supabaseBackend.getDaySettings(eventId, date);
+    const next = { ...current, ...patch };
+    const { error } = await client()
+      .from('event_day_settings')
+      .upsert({ event_id: eventId, date, day_start: next.dayStart, day_end: next.dayEnd });
+    if (error) throw error;
+    return next;
+  },
+
   async createShift(input: NewShiftInput): Promise<Shift> {
     const { data, error } = await client()
       .from('shifts')

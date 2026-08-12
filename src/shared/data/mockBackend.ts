@@ -21,6 +21,11 @@ let shifts: Shift[] = seed.shifts.map((s) => ({ ...s, assignedHelperIds: [...s.a
 let idCounter = 1000;
 const nextId = (prefix: string) => `${prefix}-${idCounter++}`;
 
+const DEFAULT_DAY_START = '10:00';
+const DEFAULT_DAY_END = '00:00';
+const daySettings = new Map<string, { dayStart: string; dayEnd: string }>();
+const daySettingsKey = (eventId: string, date: string) => `${eventId}:${date}`;
+
 function delay<T>(value: T): Promise<T> {
   // small artificial latency so loading states are exercised even w/o Supabase
   return new Promise((resolve) => setTimeout(() => resolve(value), 40));
@@ -72,6 +77,17 @@ export const mockBackend = {
   },
 
   tagUsageCount: (id: string) => delay(shifts.filter((s) => s.tagId === id).length),
+
+  getDaySettings: (eventId: string, date: string) =>
+    delay(daySettings.get(daySettingsKey(eventId, date)) ?? { dayStart: DEFAULT_DAY_START, dayEnd: DEFAULT_DAY_END }),
+
+  updateDaySettings: (eventId: string, date: string, patch: { dayStart?: string; dayEnd?: string }) => {
+    const key = daySettingsKey(eventId, date);
+    const cur = daySettings.get(key) ?? { dayStart: DEFAULT_DAY_START, dayEnd: DEFAULT_DAY_END };
+    const next = { ...cur, ...patch };
+    daySettings.set(key, next);
+    return delay(next);
+  },
 
   createShift: (input: NewShiftInput) => {
     const shift: Shift = { id: nextId('s'), assignedHelperIds: [], ...input };

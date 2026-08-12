@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { Picker } from '../../components/Picker';
 import { Button } from '../../components/Button';
@@ -51,6 +51,7 @@ export function AdminScreen() {
   const [helperModalOpen, setHelperModalOpen] = useState(false);
   const [ablaufplanOpen, setAblaufplanOpen] = useState(false);
   const [tagsModalOpen, setTagsModalOpen] = useState(false);
+  const [daySettings, setDaySettings] = useState({ dayStart: '10:00', dayEnd: '00:00' });
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -82,6 +83,11 @@ export function AdminScreen() {
     () => shifts.filter((s) => s.startTime.slice(0, 10) === currentDate),
     [shifts, currentDate]
   );
+
+  useEffect(() => {
+    if (!eventId || !currentDate) return;
+    api.getDaySettings(eventId, currentDate).then(setDaySettings);
+  }, [eventId, currentDate]);
 
   const usageByTag = useMemo(() => {
     const out: Record<string, number> = {};
@@ -138,6 +144,8 @@ export function AdminScreen() {
         tags={tags}
         shifts={dayShifts}
         helpers={helpers}
+        dayStart={daySettings.dayStart}
+        dayEnd={daySettings.dayEnd}
         dragEnabled={dragEnabled}
         selectedHelperId={selectedHelperId}
         onAssignSelected={(shiftId) => {
@@ -182,6 +190,28 @@ export function AdminScreen() {
             </Pressable>
           ))}
         </ScrollView>
+        <View style={styles.dayTimeRow}>
+          <Text style={styles.dayTimeLabel}>Tag von</Text>
+          <TextInput
+            value={daySettings.dayStart}
+            onChangeText={(v) => setDaySettings((cur) => ({ ...cur, dayStart: v }))}
+            onBlur={() => {
+              if (eventId && currentDate) api.updateDaySettings(eventId, currentDate, { dayStart: daySettings.dayStart });
+            }}
+            placeholder="HH:MM"
+            style={styles.dayTimeInput}
+          />
+          <Text style={styles.dayTimeLabel}>bis</Text>
+          <TextInput
+            value={daySettings.dayEnd}
+            onChangeText={(v) => setDaySettings((cur) => ({ ...cur, dayEnd: v }))}
+            onBlur={() => {
+              if (eventId && currentDate) api.updateDaySettings(eventId, currentDate, { dayEnd: daySettings.dayEnd });
+            }}
+            placeholder="HH:MM"
+            style={styles.dayTimeInput}
+          />
+        </View>
         <View style={{ flex: 1 }} />
         <Button
           label="+ Neue Schicht"
@@ -316,6 +346,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   dayTabs: { flexGrow: 0 },
+  dayTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dayTimeLabel: { fontSize: 13, color: colors.textSecondary },
+  dayTimeInput: {
+    width: 64,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 13,
+    backgroundColor: colors.surface,
+  },
   dayTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 4 },
   dayTabActive: { backgroundColor: colors.chipBg },
   dayTabLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },

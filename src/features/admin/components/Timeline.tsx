@@ -4,13 +4,19 @@ import { useDroppable } from '@dnd-kit/core';
 import type { EventTag, Helper, Shift } from '../../../shared/types';
 import { colors } from '../../../shared/theme/colors';
 
-const HOUR_START = 8;
-const HOUR_END = 24;
 const PX_PER_HOUR = 56;
+const COLUMN_WIDTH = 220;
+const COLUMN_PADDING = 8;
+const LANE_GAP = 4;
 
 function minutesOfDay(iso: string): number {
   const d = new Date(iso);
   return d.getHours() * 60 + d.getMinutes();
+}
+
+function timeToMin(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
 }
 
 function formatTime(iso: string): string {
@@ -18,10 +24,62 @@ function formatTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
+function formatMinLabel(min: number): string {
+  const clock = ((min % 1440) + 1440) % 1440;
+  return `${Math.floor(clock / 60).toString().padStart(2, '0')}:00`;
+}
+
+/** Cluster+lane layout for time-overlapping shifts, so they render as
+ * side-by-side parallel tracks instead of stacking on top of each other. */
+function layoutOverlaps(items: Shift[], resolveMin: (min: number) => number): Map<string, { lane: number; lanes: number }> {
+  const withRange = items
+    .map((s) => ({ shift: s, start: resolveMin(minutesOfDay(s.startTime)), end: resolveMin(minutesOfDay(s.endTime)) }))
+    .sort((a, b) => a.start - b.start);
+
+  const result = new Map<string, { lane: number; lanes: number }>();
+  let cluster: typeof withRange = [];
+  let clusterMaxEnd = -Infinity;
+
+  function flush() {
+    if (cluster.length === 0) return;
+    const laneEnds: number[] = [];
+    const laneOf = new Map<string, number>();
+    for (const item of cluster) {
+      let laneIdx = laneEnds.findIndex((end) => end <= item.start);
+      if (laneIdx === -1) {
+        laneIdx = laneEnds.length;
+        laneEnds.push(item.end);
+      } else {
+        laneEnds[laneIdx] = item.end;
+      }
+      laneOf.set(item.shift.id, laneIdx);
+    }
+    const lanes = laneEnds.length;
+    for (const item of cluster) result.set(item.shift.id, { lane: laneOf.get(item.shift.id)!, lanes });
+    cluster = [];
+    clusterMaxEnd = -Infinity;
+  }
+
+  for (const item of withRange) {
+    if (cluster.length === 0 || item.start < clusterMaxEnd) {
+      cluster.push(item);
+      clusterMaxEnd = Math.max(clusterMaxEnd, item.end);
+    } else {
+      flush();
+      cluster.push(item);
+      clusterMaxEnd = item.end;
+    }
+  }
+  flush();
+  return result;
+}
+
 interface Props {
   tags: EventTag[];
   shifts: Shift[];
   helpers: Helper[];
+  dayStart: string;
+  dayEnd: string;
   dragEnabled: boolean;
   selectedHelperId: string | null;
   onAssignSelected: (shiftId: string) => void;
@@ -32,8 +90,13 @@ interface Props {
 
 export function Timeline(props: Props) {
   const { tags, shifts, helpers } = props;
-  const height = (HOUR_END - HOUR_START) * PX_PER_HOUR;
-  const ticks = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
+  const dayStartMin = timeToMin(props.dayStart);
+  const dayEndMinRaw = timeToMin(props.dayEnd);
+  const dayEndMin = dayEndMinRaw <= dayStartMin ? dayEndMinRaw + 1440 : dayEndMinRaw;
+  const resolveMin = (clockMin: number) => (clockMin < dayStartMin ? clockMin + 1440 : clockMin);
+  const height = ((dayEndMin - dayStartMin) / 60) * PX_PER_HOUR;
+  const tickCount = Math.round((dayEndMin - dayStartMin) / 60) + 1;
+  const ticks = Array.from({ length: tickCount }, (_, i) => dayStartMin + i * 60);
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '?';
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
@@ -41,27 +104,32 @@ export function Timeline(props: Props) {
     <View style={styles.wrap}>
       <ScrollView contentContainerStyle={{ flexDirection: 'row' }}>
         <View style={[styles.hourRail, { height }]}>
-          {ticks.map((h) => (
-            <Text key={h} style={[styles.hourTick, { top: (h - HOUR_START) * PX_PER_HOUR - 6 }]}>
-              {h.toString().padStart(2, '0')}:00
+          {ticks.map((min) => (
+            <Text key={min} style={[styles.hourTick, { top: ((min - dayStartMin) / 60) * PX_PER_HOUR - 6 }]}>
+              {formatMinLabel(min)}
             </Text>
           ))}
         </View>
         {tags.map((tag) => {
           const columnShifts = shifts.filter((s) => s.tagId === tag.id);
+          const lanesById = layoutOverlaps(columnShifts, resolveMin);
           return (
             <View key={tag.id} style={[styles.column, { height }]}>
               <View style={styles.columnHeader}>
                 <Text style={styles.columnHeaderLabel}>{tag.name}</Text>
               </View>
               {columnShifts.map((shift) => {
-                const top = ((minutesOfDay(shift.startTime) - HOUR_START * 60) / 60) * PX_PER_HOUR;
+                const top = ((resolveMin(minutesOfDay(shift.startTime)) - dayStartMin) / 60) * PX_PER_HOUR;
                 const heightPx = Math.max(
                   32,
-                  ((minutesOfDay(shift.endTime) - minutesOfDay(shift.startTime)) / 60) * PX_PER_HOUR
+                  ((resolveMin(minutesOfDay(shift.endTime)) - resolveMin(minutesOfDay(shift.startTime))) / 60) * PX_PER_HOUR
                 );
+                const { lane, lanes } = lanesById.get(shift.id) ?? { lane: 0, lanes: 1 };
+                const innerWidth = COLUMN_WIDTH - COLUMN_PADDING * 2;
+                const laneWidth = (innerWidth - LANE_GAP * (lanes - 1)) / lanes;
+                const left = COLUMN_PADDING + lane * (laneWidth + LANE_GAP);
                 return (
-                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx }]}>
+                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx, left, width: laneWidth }]}>
                     {props.dragEnabled ? (
                       <DroppableShiftBlock shiftId={shift.id}>
                         <ShiftBlockContent
@@ -219,7 +287,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  blockPosition: { position: 'absolute', left: 8, right: 8 },
+  blockPosition: { position: 'absolute' },
   block: {
     flex: 1,
     borderRadius: 9,

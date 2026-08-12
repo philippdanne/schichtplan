@@ -26,6 +26,8 @@ export const api = {
   renameEventTag: backend.renameEventTag,
   deleteEventTag: backend.deleteEventTag,
   tagUsageCount: backend.tagUsageCount,
+  getDaySettings: backend.getDaySettings,
+  updateDaySettings: backend.updateDaySettings,
   createShift: backend.createShift,
   updateShift: backend.updateShift,
   deleteShift: backend.deleteShift,
