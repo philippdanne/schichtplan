@@ -46,7 +46,11 @@ export function AdminScreen() {
   const [loading, setLoading] = useState(true);
 
   const [selectedHelperId, setSelectedHelperId] = useState<string | null>(null);
-  const [shiftModal, setShiftModal] = useState<{ open: boolean; editing: Shift | null }>({ open: false, editing: null });
+  const [shiftModal, setShiftModal] = useState<{
+    open: boolean;
+    editing: Shift | null;
+    prefill?: { tagId: string; start: string; end: string } | null;
+  }>({ open: false, editing: null });
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [helperModalOpen, setHelperModalOpen] = useState(false);
   const [ablaufplanOpen, setAblaufplanOpen] = useState(false);
@@ -159,6 +163,7 @@ export function AdminScreen() {
           await api.deleteShift(id);
         }}
         onUnassign={unassign}
+        onCreateShift={(tagId, start, end) => setShiftModal({ open: true, editing: null, prefill: { tagId, start, end } })}
       />
       <HelperPool
         helpers={helpers}
@@ -234,7 +239,8 @@ export function AdminScreen() {
         visible={shiftModal.open}
         tags={tags}
         editing={shiftModal.editing}
-        onClose={() => setShiftModal({ open: false, editing: null })}
+        prefill={shiftModal.prefill}
+        onClose={() => setShiftModal({ open: false, editing: null, prefill: null })}
         onSave={async (value: ShiftFormValue) => {
           if (!eventId || !currentDate) return;
           const startTime = `${currentDate}T${value.start}:00`;

@@ -20,12 +20,15 @@ export function ShiftFormModal({
   visible,
   tags,
   editing,
+  prefill,
   onClose,
   onSave,
 }: {
   visible: boolean;
   tags: EventTag[];
   editing: Shift | null;
+  /** Prefills the form for a new shift (e.g. from drag-to-create on the timeline). Ignored when `editing` is set. */
+  prefill?: { tagId: string; start: string; end: string } | null;
   onClose: () => void;
   onSave: (value: ShiftFormValue) => Promise<void> | void;
 }) {
@@ -48,12 +51,12 @@ export function ShiftFormModal({
     } else {
       setName('');
       setDescription('');
-      setTagId(tags[0]?.id ?? null);
-      setStart('10:00');
-      setEnd('14:00');
+      setTagId(prefill?.tagId ?? tags[0]?.id ?? null);
+      setStart(prefill?.start ?? '10:00');
+      setEnd(prefill?.end ?? '14:00');
     }
     setError(null);
-  }, [visible, editing, tags]);
+  }, [visible, editing, tags, prefill]);
 
   async function handleSave() {
     if (!name.trim()) return setError('Name darf nicht leer sein.');

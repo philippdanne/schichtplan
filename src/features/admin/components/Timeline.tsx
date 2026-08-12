@@ -86,6 +86,7 @@ interface Props {
   onEditShift: (shift: Shift) => void;
   onDeleteShift: (shiftId: string) => void;
   onUnassign: (shiftId: string, helperId: string) => void;
+  onCreateShift: (tagId: string, start: string, end: string) => void;
 }
 
 export function Timeline(props: Props) {
@@ -100,6 +101,14 @@ export function Timeline(props: Props) {
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '?';
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
+  function handleColumnCreate(tagId: string, startMin: number, endMin: number) {
+    const clamp = (m: number) => Math.max(0, Math.min(1439, m));
+    const toHHMM = (m: number) => `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
+    const s = clamp(startMin);
+    const e = clamp(endMin) <= s ? Math.min(1439, s + 60) : clamp(endMin);
+    props.onCreateShift(tagId, toHHMM(s), toHHMM(e));
+  }
+
   return (
     <View style={styles.wrap}>
       <ScrollView contentContainerStyle={{ flexDirection: 'row' }}>
@@ -113,8 +122,8 @@ export function Timeline(props: Props) {
         {tags.map((tag) => {
           const columnShifts = shifts.filter((s) => s.tagId === tag.id);
           const lanesById = layoutOverlaps(columnShifts, resolveMin);
-          return (
-            <View key={tag.id} style={[styles.column, { height }]}>
+          const columnBody = (
+            <View style={[styles.column, { height }]}>
               <View style={styles.columnHeader}>
                 <Text style={styles.columnHeaderLabel}>{tag.name}</Text>
               </View>
@@ -176,9 +185,91 @@ export function Timeline(props: Props) {
               })}
             </View>
           );
+
+          return props.dragEnabled ? (
+            <DragCreateColumn
+              key={tag.id}
+              height={height}
+              dayStartMin={dayStartMin}
+              onCreate={(startMin, endMin) => handleColumnCreate(tag.id, startMin, endMin)}
+            >
+              {columnBody}
+            </DragCreateColumn>
+          ) : (
+            <React.Fragment key={tag.id}>{columnBody}</React.Fragment>
+          );
         })}
       </ScrollView>
     </View>
+  );
+}
+
+function DragCreateColumn({
+  height,
+  dayStartMin,
+  onCreate,
+  children,
+}: {
+  height: number;
+  dayStartMin: number;
+  onCreate: (startMin: number, endMin: number) => void;
+  children: React.ReactNode;
+}) {
+  // Plain DOM node, same reasoning as DroppableShiftBlock/DraggableHelperCard
+  // — needs real window-level mouse tracking for the drag gesture, and only
+  // ever renders when dragEnabled (web/tablet).
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<{ startY: number; currentY: number } | null>(null);
+
+  function yToMin(y: number): number {
+    return Math.round((dayStartMin + (y / PX_PER_HOUR) * 60) / 15) * 15;
+  }
+
+  function handleMouseDown(e: React.MouseEvent) {
+    // Ignore mousedowns that started on a shift block — only bare column
+    // background starts a create-drag. The inner column View fills the
+    // whole wrapper, so target===currentTarget never holds; walk the real
+    // DOM instead via the marker DroppableShiftBlock sets on itself.
+    if ((e.target as HTMLElement).closest('[data-shift-block]')) return;
+    const rect = ref.current!.getBoundingClientRect();
+    const startY = e.clientY - rect.top;
+    setDrag({ startY, currentY: startY });
+
+    function handleMove(ev: MouseEvent) {
+      const currentY = ev.clientY - rect.top;
+      setDrag((d) => (d ? { ...d, currentY } : d));
+    }
+    function handleUp(ev: MouseEvent) {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      const endY = ev.clientY - rect.top;
+      setDrag((d) => {
+        if (!d) return null;
+        const dragged = Math.abs(endY - d.startY) > 4;
+        const startMin = yToMin(Math.min(d.startY, endY));
+        const endMin = dragged ? yToMin(Math.max(d.startY, endY)) : startMin + 60;
+        onCreate(startMin, endMin);
+        return null;
+      });
+    }
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  }
+
+  const previewTop = drag ? Math.min(drag.startY, drag.currentY) : 0;
+  const previewHeight = drag ? Math.max(2, Math.abs(drag.currentY - drag.startY)) : 0;
+
+  return (
+    <div
+      ref={ref}
+      onMouseDown={handleMouseDown}
+      style={{ position: 'relative', height, width: COLUMN_WIDTH, cursor: 'crosshair', flexShrink: 0 }}
+    >
+      {children}
+      {drag && (
+        <View style={[styles.dragPreview, { top: previewTop, height: previewHeight }]} pointerEvents="none" />
+      )}
+    </div>
   );
 }
 
@@ -187,7 +278,7 @@ function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children:
   // Plain DOM node for the same reason as DraggableHelperCard in
   // HelperPool.tsx — only rendered on web.
   return (
-    <div ref={setNodeRef} style={{ height: '100%' }}>
+    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%' }}>
       <View style={[styles.block, isOver && styles.blockOver]}>{children}</View>
     </div>
   );
@@ -341,4 +432,14 @@ const styles = StyleSheet.create({
   confirmYesLabel: { fontSize: 12, color: '#fff', fontWeight: '600' },
   confirmNo: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface },
   confirmNoLabel: { fontSize: 12, color: colors.textPrimary },
+  dragPreview: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.teal,
+    backgroundColor: colors.tealBg,
+  },
 });
