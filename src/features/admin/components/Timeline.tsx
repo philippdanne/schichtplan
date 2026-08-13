@@ -94,7 +94,14 @@ export function Timeline(props: Props) {
   const dayStartMin = timeToMin(props.dayStart);
   const dayEndMinRaw = timeToMin(props.dayEnd);
   const dayEndMin = dayEndMinRaw <= dayStartMin ? dayEndMinRaw + 1440 : dayEndMinRaw;
-  const resolveMin = (clockMin: number) => (clockMin < dayStartMin ? clockMin + 1440 : clockMin);
+  // Only wrap early-morning clock times into "tomorrow" when the day
+  // actually spans midnight (dayEnd <= dayStart) — and only the clock times
+  // that fall in that early-morning sliver (before the raw, un-extended
+  // dayEnd). Wrapping on `clockMin < dayStartMin` alone (the previous logic)
+  // wrapped any shift starting before dayStart even on an ordinary
+  // same-day range, corrupting start/end by wrapping one but not the other.
+  const spansMidnight = dayEndMinRaw <= dayStartMin;
+  const resolveMin = (clockMin: number) => (spansMidnight && clockMin < dayEndMinRaw ? clockMin + 1440 : clockMin);
   const height = ((dayEndMin - dayStartMin) / 60) * PX_PER_HOUR;
   const tickCount = Math.round((dayEndMin - dayStartMin) / 60) + 1;
   const ticks = Array.from({ length: tickCount }, (_, i) => dayStartMin + i * 60);
