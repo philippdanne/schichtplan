@@ -13,25 +13,9 @@ import { TagsModal } from './components/TagsModal';
 import { api } from '../../shared/data/api';
 import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
 import { colors } from '../../shared/theme/colors';
+import { formatDayLabel, dateRange } from '../../shared/format/schedule';
+import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
-
-const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
-
-function formatDayLabel(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')}. ${d.toLocaleDateString('de-DE', { month: 'short' })}`;
-}
-
-function dateRange(startDate: string, endDate: string): string[] {
-  const out: string[] = [];
-  const cur = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
-  while (cur <= end) {
-    out.push(cur.toISOString().slice(0, 10));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return out;
-}
 
 export function AdminScreen() {
   const dragEnabled = useDragDropEnabled();
@@ -56,6 +40,7 @@ export function AdminScreen() {
   const [ablaufplanOpen, setAblaufplanOpen] = useState(false);
   const [tagsModalOpen, setTagsModalOpen] = useState(false);
   const [daySettings, setDaySettings] = useState({ dayStart: '10:00', dayEnd: '00:00' });
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -200,6 +185,19 @@ export function AdminScreen() {
           {!!event?.ablaufplan && <View style={styles.ablaufplanDot} />}
         </View>
         <Button label="Spalten verwalten" onPress={() => setTagsModalOpen(true)} />
+        <Button
+          label="Als PDF exportieren"
+          disabled={!event || exporting}
+          onPress={async () => {
+            if (!event) return;
+            setExporting(true);
+            try {
+              await exportSchedulePdf({ event, tags, shifts, helpers });
+            } finally {
+              setExporting(false);
+            }
+          }}
+        />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabs}>
           {days.map((d, i) => (
             <Pressable key={d} onPress={() => setDayIdx(i)} style={[styles.dayTab, i === dayIdx && styles.dayTabActive]}>

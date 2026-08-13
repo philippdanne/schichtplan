@@ -1,27 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Picker } from '../../components/Picker';
+import { Button } from '../../components/Button';
 import { api } from '../../shared/data/api';
 import type { EventSummary, EventTag, Helper, Shift } from '../../shared/types';
 import { colors } from '../../shared/theme/colors';
-
-interface DayGroup {
-  key: string;
-  label: string;
-  shifts: Shift[];
-}
-
-const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
-
-function formatDayLabel(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')}. ${d.toLocaleDateString('de-DE', { month: 'short' })}`;
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
+import { formatTime, groupShiftsByDay } from '../../shared/format/schedule';
+import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 
 export function HelferScreen() {
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -31,6 +16,7 @@ export function HelferScreen() {
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [nameFilter, setNameFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -53,24 +39,11 @@ export function HelferScreen() {
     });
   }, [eventId]);
 
+  const event = events.find((e) => e.id === eventId) ?? null;
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '';
   const tagName = (id: string) => tags.find((t) => t.id === id)?.name ?? '';
 
-  const dayGroups: DayGroup[] = useMemo(() => {
-    const byDate = new Map<string, Shift[]>();
-    for (const s of shifts) {
-      const dateKey = s.startTime.slice(0, 10);
-      if (!byDate.has(dateKey)) byDate.set(dateKey, []);
-      byDate.get(dateKey)!.push(s);
-    }
-    return [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, dayShifts]) => ({
-        key: date,
-        label: formatDayLabel(date),
-        shifts: [...dayShifts].sort((a, b) => a.startTime.localeCompare(b.startTime)),
-      }));
-  }, [shifts]);
+  const dayGroups = useMemo(() => groupShiftsByDay(shifts), [shifts]);
 
   const isOwnShift = (shift: Shift) => {
     const filter = nameFilter.trim().toLowerCase();
@@ -91,6 +64,19 @@ export function HelferScreen() {
           onChangeText={setNameFilter}
           placeholder="Nach Namen filtern (z. B. deinem eigenen)…"
           style={styles.filterInput}
+        />
+        <Button
+          label="Als PDF exportieren"
+          disabled={!event || exporting}
+          onPress={async () => {
+            if (!event) return;
+            setExporting(true);
+            try {
+              await exportSchedulePdf({ event, tags, shifts, helpers });
+            } finally {
+              setExporting(false);
+            }
+          }}
         />
       </View>
 

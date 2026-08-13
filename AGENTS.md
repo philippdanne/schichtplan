@@ -14,6 +14,18 @@ Implementierung lebt in `src/`.
 - Auth: Supabase Auth (siehe unten — **Admin-Bereich erfordert Login**)
 - Drag & Drop: `@dnd-kit/core`, nur aktiv auf Web ab Tablet-Breite (siehe
   `src/shared/platform/useDragDropEnabled.ts`)
+- PDF-Export: `src/shared/print/exportSchedulePdf.ts`, gleiches
+  Platform.OS-Verzweigungsmuster wie beim Drag & Drop. Web: `window.print()`
+  über ein verstecktes `<iframe srcdoc>` (kein Popup-Blocker-Risiko, keine
+  Live-App-DOM im Druckpfad). Nativ (iOS/Android): `expo-print` rendert den
+  HTML-String per WebView zu einer echten PDF-Datei, `expo-sharing` reicht
+  sie ans Share-Sheet weiter. Beide Pfade nutzen dasselbe Template aus
+  `src/shared/print/buildScheduleHtml.ts` (reine Funktion, exportiert die
+  tagesweise gruppierte Liste des ganzen Events — nicht die
+  Drag&Drop-Timeline, die druckt sich nicht sinnvoll). Tages-Formatierung/
+  -Gruppierung (`formatDayLabel`, `groupShiftsByDay`, …) liegt gebündelt in
+  `src/shared/format/schedule.ts`, von Admin, Helfer und PDF-Template
+  gemeinsam genutzt.
 
 ## Auth — WICHTIG, Stand aktualisiert
 
@@ -51,7 +63,8 @@ sich geändert:
 
 ```
 src/
-  shared/        Typen, Theme, Auth-Context, Daten-Layer, Mock-Seed
+  shared/        Typen, Theme, Auth-Context, Daten-Layer, Mock-Seed,
+                 Format-Helfer (format/), PDF-Export (print/)
   features/
     admin/        Timeline, Helfer-Pool, Formulare, Drag&Drop, Auth-Gate
     helfer/        Read-only chronologische Liste
