@@ -7,6 +7,7 @@ import type { Shift } from '../types';
 export const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
 
 export function formatDayLabel(iso: string): string {
+<<<<<<< HEAD
   const d = new Date(iso);
   const formatter = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
   const parts = formatter.formatToParts(d);
@@ -14,12 +15,20 @@ export function formatDayLabel(iso: string): string {
   const dayNum = parts.find((p) => p.type === 'day')?.value ?? '';
   const monthStr = parts.find((p) => p.type === 'month')?.value ?? '';
   return `${dayName}, ${dayNum}. ${monthStr}`;
+=======
+  const d = new Date(iso + 'T00:00:00');
+  return `${WEEKDAYS[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')}. ${d.toLocaleDateString('de-DE', { month: 'short' })}`;
+>>>>>>> 4658f3432298f213aa3f7dd94cd2e20ba214ffbf
 }
 
 export function formatTime(iso: string): string {
   const d = new Date(iso);
+<<<<<<< HEAD
   const formatter = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
   return formatter.format(d);
+=======
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+>>>>>>> 4658f3432298f213aa3f7dd94cd2e20ba214ffbf
 }
 
 export function dateRange(startDate: string, endDate: string): string[] {
