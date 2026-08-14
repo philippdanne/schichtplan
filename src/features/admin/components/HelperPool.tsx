@@ -9,10 +9,16 @@ interface Props {
   tags: EventTag[];
   roleTags: RoleTag[];
   statsByHelper: Record<string, { count: number; minutes: number }>;
+  /** "eventId:date" for the day currently shown in the timeline; helpers unavailable that day are greyed out. */
+  availabilityKey: string;
   dragEnabled: boolean;
   selectedHelperId: string | null;
   onSelectHelper: (id: string | null) => void;
   onCreateHelper: () => void;
+}
+
+function isHelperAvailable(helper: Helper, availabilityKey: string): boolean {
+  return helper.availability === null || helper.availability.includes(availabilityKey);
 }
 
 function formatDuration(min: number): string {
@@ -61,14 +67,16 @@ export function HelperPool(props: Props) {
         </View>
       </View>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-        {filtered.map((h) =>
-          props.dragEnabled ? (
+        {filtered.map((h) => {
+          const available = isHelperAvailable(h, props.availabilityKey);
+          return props.dragEnabled ? (
             <DraggableHelperCard
               key={h.id}
               helper={h}
               roleColor={roleColor(h.roleTagId)}
               roleLabel={roleLabel(h.roleTagId)}
               stats={statsByHelper[h.id]}
+              available={available}
             />
           ) : (
             <TappableHelperCard
@@ -77,11 +85,12 @@ export function HelperPool(props: Props) {
               roleColor={roleColor(h.roleTagId)}
               roleLabel={roleLabel(h.roleTagId)}
               stats={statsByHelper[h.id]}
+              available={available}
               selected={props.selectedHelperId === h.id}
               onPress={() => props.onSelectHelper(props.selectedHelperId === h.id ? null : h.id)}
             />
-          )
-        )}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -131,8 +140,12 @@ function DraggableHelperCard(props: {
   roleColor?: string;
   roleLabel?: string;
   stats?: { count: number; minutes: number };
+  available: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `helper:${props.helper.id}` });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `helper:${props.helper.id}`,
+    disabled: !props.available,
+  });
   // A plain DOM element, not RN's <View> — react-native-web's View only
   // forwards a fixed prop allowlist and silently drops dnd-kit's pointer
   // listeners, so drag never activates. This component only ever renders
@@ -140,12 +153,16 @@ function DraggableHelperCard(props: {
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...(props.available ? listeners : {})}
       {...attributes}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab', opacity: isDragging ? 0.5 : 1 }}
+      style={{
+        cursor: !props.available ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
+        opacity: !props.available ? 0.4 : isDragging ? 0.5 : 1,
+      }}
     >
       <View style={styles.card}>
         <CardContent {...props} />
+        {!props.available && <Text style={styles.unavailableHint}>Nicht verfügbar an diesem Tag</Text>}
       </View>
     </div>
   );
@@ -156,12 +173,18 @@ function TappableHelperCard(props: {
   roleColor?: string;
   roleLabel?: string;
   stats?: { count: number; minutes: number };
+  available: boolean;
   selected: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={props.onPress} style={[styles.card, props.selected && styles.cardSelected]}>
+    <Pressable
+      onPress={props.onPress}
+      disabled={!props.available}
+      style={[styles.card, props.selected && styles.cardSelected, !props.available && styles.cardUnavailable]}
+    >
       <CardContent {...props} />
+      {!props.available && <Text style={styles.unavailableHint}>Nicht verfügbar an diesem Tag</Text>}
       {props.selected && <Text style={styles.selectedHint}>Jetzt eine Schicht antippen, um zuzuweisen</Text>}
     </Pressable>
   );
@@ -206,6 +229,8 @@ const styles = StyleSheet.create({
   },
   cardDragging: { opacity: 0.5 },
   cardSelected: { borderColor: colors.accent, backgroundColor: colors.tealBg },
+  cardUnavailable: { opacity: 0.4 },
+  unavailableHint: { fontSize: 11, color: colors.danger, fontWeight: '500', marginTop: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardName: { fontSize: 13.5, fontWeight: '500', color: colors.textPrimary },
   cardTags: { fontSize: 11, color: colors.textSecondary, marginTop: 3 },

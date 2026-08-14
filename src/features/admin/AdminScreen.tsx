@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { Picker } from '../../components/Picker';
 import { Button } from '../../components/Button';
@@ -8,28 +8,14 @@ import { HelperPool } from './components/HelperPool';
 import { ShiftFormModal, type ShiftFormValue } from './components/ShiftFormModal';
 import { EventFormModal } from './components/EventFormModal';
 import { HelperFormModal } from './components/HelperFormModal';
+import { AblaufplanModal } from './components/AblaufplanModal';
+import { TagsModal } from './components/TagsModal';
 import { api } from '../../shared/data/api';
 import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
 import { colors } from '../../shared/theme/colors';
+import { formatDayLabel, dateRange } from '../../shared/format/schedule';
+import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
-
-const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
-
-function formatDayLabel(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')}. ${d.toLocaleDateString('de-DE', { month: 'short' })}`;
-}
-
-function dateRange(startDate: string, endDate: string): string[] {
-  const out: string[] = [];
-  const cur = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
-  while (cur <= end) {
-    out.push(cur.toISOString().slice(0, 10));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return out;
-}
 
 export function AdminScreen() {
   const dragEnabled = useDragDropEnabled();
@@ -44,9 +30,17 @@ export function AdminScreen() {
   const [loading, setLoading] = useState(true);
 
   const [selectedHelperId, setSelectedHelperId] = useState<string | null>(null);
-  const [shiftModal, setShiftModal] = useState<{ open: boolean; editing: Shift | null }>({ open: false, editing: null });
+  const [shiftModal, setShiftModal] = useState<{
+    open: boolean;
+    editing: Shift | null;
+    prefill?: { tagId: string; start: string; end: string } | null;
+  }>({ open: false, editing: null });
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [helperModalOpen, setHelperModalOpen] = useState(false);
+  const [ablaufplanOpen, setAblaufplanOpen] = useState(false);
+  const [tagsModalOpen, setTagsModalOpen] = useState(false);
+  const [daySettings, setDaySettings] = useState({ dayStart: '10:00', dayEnd: '00:00' });
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -78,6 +72,28 @@ export function AdminScreen() {
     () => shifts.filter((s) => s.startTime.slice(0, 10) === currentDate),
     [shifts, currentDate]
   );
+
+  useEffect(() => {
+    if (!eventId || !currentDate) return;
+    api.getDaySettings(eventId, currentDate).then(setDaySettings);
+  }, [eventId, currentDate]);
+
+  const availabilityOptions = useMemo(
+    () =>
+      events.flatMap((ev) =>
+        dateRange(ev.startDate, ev.endDate).map((date) => ({
+          key: `${ev.id}:${date}`,
+          label: `${ev.name} – ${formatDayLabel(date)}`,
+        }))
+      ),
+    [events]
+  );
+
+  const usageByTag = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const s of shifts) out[s.tagId] = (out[s.tagId] ?? 0) + 1;
+    return out;
+  }, [shifts]);
 
   const statsByHelper = useMemo(() => {
     const out: Record<string, { count: number; minutes: number }> = {};
@@ -128,6 +144,8 @@ export function AdminScreen() {
         tags={tags}
         shifts={dayShifts}
         helpers={helpers}
+        dayStart={daySettings.dayStart}
+        dayEnd={daySettings.dayEnd}
         dragEnabled={dragEnabled}
         selectedHelperId={selectedHelperId}
         onAssignSelected={(shiftId) => {
@@ -141,12 +159,14 @@ export function AdminScreen() {
           await api.deleteShift(id);
         }}
         onUnassign={unassign}
+        onCreateShift={(tagId, start, end) => setShiftModal({ open: true, editing: null, prefill: { tagId, start, end } })}
       />
       <HelperPool
         helpers={helpers}
         tags={tags}
         roleTags={roleTags}
         statsByHelper={statsByHelper}
+        availabilityKey={eventId && currentDate ? `${eventId}:${currentDate}` : ''}
         dragEnabled={dragEnabled}
         selectedHelperId={selectedHelperId}
         onSelectHelper={setSelectedHelperId}
@@ -160,6 +180,24 @@ export function AdminScreen() {
       <View style={styles.toolbar}>
         <Picker value={eventId} options={events.map((e) => ({ value: e.id, label: e.name }))} onChange={setEventId} />
         <Button label="+ Neues Event" onPress={() => setEventModalOpen(true)} />
+        <View>
+          <Button label="Ablaufplan" onPress={() => setAblaufplanOpen(true)} />
+          {!!event?.ablaufplan && <View style={styles.ablaufplanDot} />}
+        </View>
+        <Button label="Spalten verwalten" onPress={() => setTagsModalOpen(true)} />
+        <Button
+          label="Als PDF exportieren"
+          disabled={!event || exporting}
+          onPress={async () => {
+            if (!event) return;
+            setExporting(true);
+            try {
+              await exportSchedulePdf({ event, tags, shifts, helpers });
+            } finally {
+              setExporting(false);
+            }
+          }}
+        />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabs}>
           {days.map((d, i) => (
             <Pressable key={d} onPress={() => setDayIdx(i)} style={[styles.dayTab, i === dayIdx && styles.dayTabActive]}>
@@ -167,6 +205,28 @@ export function AdminScreen() {
             </Pressable>
           ))}
         </ScrollView>
+        <View style={styles.dayTimeRow}>
+          <Text style={styles.dayTimeLabel}>Tag von</Text>
+          <TextInput
+            value={daySettings.dayStart}
+            onChangeText={(v) => setDaySettings((cur) => ({ ...cur, dayStart: v }))}
+            onBlur={() => {
+              if (eventId && currentDate) api.updateDaySettings(eventId, currentDate, { dayStart: daySettings.dayStart });
+            }}
+            placeholder="HH:MM"
+            style={styles.dayTimeInput}
+          />
+          <Text style={styles.dayTimeLabel}>bis</Text>
+          <TextInput
+            value={daySettings.dayEnd}
+            onChangeText={(v) => setDaySettings((cur) => ({ ...cur, dayEnd: v }))}
+            onBlur={() => {
+              if (eventId && currentDate) api.updateDaySettings(eventId, currentDate, { dayEnd: daySettings.dayEnd });
+            }}
+            placeholder="HH:MM"
+            style={styles.dayTimeInput}
+          />
+        </View>
         <View style={{ flex: 1 }} />
         <Button
           label="+ Neue Schicht"
@@ -189,11 +249,15 @@ export function AdminScreen() {
         visible={shiftModal.open}
         tags={tags}
         editing={shiftModal.editing}
-        onClose={() => setShiftModal({ open: false, editing: null })}
+        prefill={shiftModal.prefill}
+        onClose={() => setShiftModal({ open: false, editing: null, prefill: null })}
         onSave={async (value: ShiftFormValue) => {
           if (!eventId || !currentDate) return;
-          const startTime = `${currentDate}T${value.start}:00`;
-          const endTime = `${currentDate}T${value.end}:00`;
+          const localStart = `${currentDate}T${value.start}:00`;
+          const localEnd = `${currentDate}T${value.end}:00`;
+          const offset = new Date(localStart).getTimezoneOffset() * 60 * 1000;
+          const startTime = new Date(new Date(localStart).getTime() + offset).toISOString();
+          const endTime = new Date(new Date(localEnd).getTime() + offset).toISOString();
           if (shiftModal.editing) {
             const updated = await api.updateShift(shiftModal.editing.id, {
               name: value.name,
@@ -229,15 +293,55 @@ export function AdminScreen() {
         }}
       />
 
+      <AblaufplanModal
+        visible={ablaufplanOpen}
+        eventName={event?.name ?? ''}
+        initialText={event?.ablaufplan ?? ''}
+        onClose={() => setAblaufplanOpen(false)}
+        onSave={async (text) => {
+          if (!eventId) return;
+          const updated = await api.updateEvent(eventId, { ablaufplan: text });
+          setEvents((cur) => cur.map((e) => (e.id === updated.id ? updated : e)));
+          setAblaufplanOpen(false);
+        }}
+      />
+
+      <TagsModal
+        visible={tagsModalOpen}
+        eventName={event?.name ?? ''}
+        tags={tags}
+        usageByTag={usageByTag}
+        onClose={() => setTagsModalOpen(false)}
+        onCreate={async (name) => {
+          if (!eventId) return;
+          const created = await api.createEventTag(eventId, name);
+          setTags((cur) => [...cur, created]);
+        }}
+        onRename={async (id, name) => {
+          const updated = await api.renameEventTag(id, name);
+          setTags((cur) => cur.map((t) => (t.id === updated.id ? updated : t)));
+        }}
+        onDelete={async (id) => {
+          await api.deleteEventTag(id);
+          setTags((cur) => cur.filter((t) => t.id !== id));
+        }}
+      />
+
       <HelperFormModal
         visible={helperModalOpen}
         tags={tags}
         roleTags={roleTags}
+        availabilityOptions={availabilityOptions}
         onClose={() => setHelperModalOpen(false)}
         onSave={async (value) => {
           const created = await api.createHelper(value);
           setHelpers((cur) => [...cur, created]);
           setHelperModalOpen(false);
+        }}
+        onCreateRoleTag={async (name, color) => {
+          const created = await api.createRoleTag(name, color);
+          setRoleTags((cur) => [...cur, created]);
+          return created;
         }}
       />
     </View>
@@ -249,15 +353,36 @@ const styles = StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
     zIndex: 10,
   },
+  ablaufplanDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
   dayTabs: { flexGrow: 0 },
+  dayTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dayTimeLabel: { fontSize: 13, color: colors.textSecondary },
+  dayTimeInput: {
+    width: 64,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 13,
+    backgroundColor: colors.surface,
+  },
   dayTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 4 },
   dayTabActive: { backgroundColor: colors.chipBg },
   dayTabLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },

@@ -25,7 +25,7 @@ function mapEventTag(row: any): EventTag {
 }
 
 function mapHelper(row: any): Helper {
-  return { id: row.id, name: row.name, tags: row.tags ?? [], roleTagId: row.role_tag_id };
+  return { id: row.id, name: row.name, tags: row.tags ?? [], roleTagId: row.role_tag_id, availability: row.availability };
 }
 
 function mapRoleTag(row: any): RoleTag {
@@ -95,6 +95,75 @@ export const supabaseBackend = {
     return event;
   },
 
+  async updateEvent(
+    id: string,
+    patch: Partial<Pick<EventSummary, 'name' | 'startDate' | 'endDate' | 'ablaufplan'>>
+  ): Promise<EventSummary> {
+    const row: Record<string, unknown> = {};
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.startDate !== undefined) row.start_date = patch.startDate;
+    if (patch.endDate !== undefined) row.end_date = patch.endDate;
+    if (patch.ablaufplan !== undefined) row.ablaufplan = patch.ablaufplan;
+    const { data, error } = await client().from('events').update(row).eq('id', id).select().single();
+    if (error) throw error;
+    return mapEvent(data);
+  },
+
+  async createEventTag(eventId: string, name: string): Promise<EventTag> {
+    const { count } = await client().from('event_tags').select('id', { count: 'exact', head: true }).eq('event_id', eventId);
+    const { data, error } = await client()
+      .from('event_tags')
+      .insert({ event_id: eventId, name, sort_order: count ?? 0 })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapEventTag(data);
+  },
+
+  async renameEventTag(id: string, name: string): Promise<EventTag> {
+    const { data, error } = await client().from('event_tags').update({ name }).eq('id', id).select().single();
+    if (error) throw error;
+    return mapEventTag(data);
+  },
+
+  async deleteEventTag(id: string): Promise<void> {
+    const usage = await supabaseBackend.tagUsageCount(id);
+    if (usage > 0) throw new Error(`Spalte wird noch von ${usage} Schicht(en) verwendet.`);
+    const { error } = await client().from('event_tags').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async tagUsageCount(id: string): Promise<number> {
+    const { count, error } = await client().from('shifts').select('id', { count: 'exact', head: true }).eq('tag_id', id);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  async getDaySettings(eventId: string, date: string): Promise<{ dayStart: string; dayEnd: string }> {
+    const { data, error } = await client()
+      .from('event_day_settings')
+      .select('day_start, day_end')
+      .eq('event_id', eventId)
+      .eq('date', date)
+      .maybeSingle();
+    if (error) throw error;
+    return { dayStart: data?.day_start?.slice(0, 5) ?? '10:00', dayEnd: data?.day_end?.slice(0, 5) ?? '00:00' };
+  },
+
+  async updateDaySettings(
+    eventId: string,
+    date: string,
+    patch: { dayStart?: string; dayEnd?: string }
+  ): Promise<{ dayStart: string; dayEnd: string }> {
+    const current = await supabaseBackend.getDaySettings(eventId, date);
+    const next = { ...current, ...patch };
+    const { error } = await client()
+      .from('event_day_settings')
+      .upsert({ event_id: eventId, date, day_start: next.dayStart, day_end: next.dayEnd });
+    if (error) throw error;
+    return next;
+  },
+
   async createShift(input: NewShiftInput): Promise<Shift> {
     const { data, error } = await client()
       .from('shifts')
@@ -151,11 +220,17 @@ export const supabaseBackend = {
   async createHelper(input: NewHelperInput): Promise<Helper> {
     const { data, error } = await client()
       .from('helpers')
-      .insert({ name: input.name, tags: input.tags, role_tag_id: input.roleTagId })
+      .insert({ name: input.name, tags: input.tags, role_tag_id: input.roleTagId, availability: input.availability })
       .select()
       .single();
     if (error) throw error;
     return mapHelper(data);
+  },
+
+  async createRoleTag(name: string, color: string): Promise<RoleTag> {
+    const { data, error } = await client().from('role_tags').insert({ name, color }).select().single();
+    if (error) throw error;
+    return mapRoleTag(data);
   },
 
   subscribeShifts(eventId: string, onChange: () => void): () => void {

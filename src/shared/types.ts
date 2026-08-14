@@ -10,6 +10,8 @@ export interface Helper {
   /** activity tags, e.g. "Zapfen", "Kellnern", "Wertmarkenverkauf" */
   tags: string[];
   roleTagId: string | null;
+  /** Days the helper is available, as "eventId:date" keys. `null` = always available. */
+  availability: string[] | null;
 }
 
 export interface EventTag {
@@ -57,4 +59,5 @@ export interface NewHelperInput {
   name: string;
   tags: string[];
   roleTagId: string | null;
+  availability: string[] | null;
 }

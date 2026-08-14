@@ -14,12 +14,17 @@ import type {
 // used whenever no Supabase project is configured (see src/shared/data/api.ts).
 let events: EventSummary[] = seed.events.map((e) => ({ ...e }));
 let eventTags: EventTag[] = seed.eventTags.map((t) => ({ ...t }));
-let helpers: Helper[] = seed.helpers.map((h) => ({ ...h, tags: [...h.tags] }));
-const roleTags: RoleTag[] = seed.roleTags.map((r) => ({ ...r }));
+let helpers: Helper[] = seed.helpers.map((h) => ({ ...h, tags: [...h.tags], availability: h.availability ? [...h.availability] : null }));
+let roleTags: RoleTag[] = seed.roleTags.map((r) => ({ ...r }));
 let shifts: Shift[] = seed.shifts.map((s) => ({ ...s, assignedHelperIds: [...s.assignedHelperIds] }));
 
 let idCounter = 1000;
 const nextId = (prefix: string) => `${prefix}-${idCounter++}`;
+
+const DEFAULT_DAY_START = '10:00';
+const DEFAULT_DAY_END = '00:00';
+const daySettings = new Map<string, { dayStart: string; dayEnd: string }>();
+const daySettingsKey = (eventId: string, date: string) => `${eventId}:${date}`;
 
 function delay<T>(value: T): Promise<T> {
   // small artificial latency so loading states are exercised even w/o Supabase
@@ -41,6 +46,47 @@ export const mockBackend = {
       ...seed.DEFAULT_TAGS.map((name, i) => ({ id: nextId('tag'), eventId: event.id, name, sortOrder: i })),
     ];
     return delay(event);
+  },
+
+  updateEvent: (id: string, patch: Partial<Pick<EventSummary, 'name' | 'startDate' | 'endDate' | 'ablaufplan'>>) => {
+    events = events.map((e) => (e.id === id ? { ...e, ...patch } : e));
+    const updated = events.find((e) => e.id === id);
+    if (!updated) throw new Error('Event not found');
+    return delay(updated);
+  },
+
+  createEventTag: (eventId: string, name: string) => {
+    const sortOrder = eventTags.filter((t) => t.eventId === eventId).length;
+    const tag: EventTag = { id: nextId('tag'), eventId, name, sortOrder };
+    eventTags = [...eventTags, tag];
+    return delay(tag);
+  },
+
+  renameEventTag: (id: string, name: string) => {
+    eventTags = eventTags.map((t) => (t.id === id ? { ...t, name } : t));
+    const updated = eventTags.find((t) => t.id === id);
+    if (!updated) throw new Error('Tag not found');
+    return delay(updated);
+  },
+
+  deleteEventTag: (id: string) => {
+    const usage = shifts.filter((s) => s.tagId === id).length;
+    if (usage > 0) return Promise.reject(new Error(`Spalte wird noch von ${usage} Schicht(en) verwendet.`));
+    eventTags = eventTags.filter((t) => t.id !== id);
+    return delay(undefined);
+  },
+
+  tagUsageCount: (id: string) => delay(shifts.filter((s) => s.tagId === id).length),
+
+  getDaySettings: (eventId: string, date: string) =>
+    delay(daySettings.get(daySettingsKey(eventId, date)) ?? { dayStart: DEFAULT_DAY_START, dayEnd: DEFAULT_DAY_END }),
+
+  updateDaySettings: (eventId: string, date: string, patch: { dayStart?: string; dayEnd?: string }) => {
+    const key = daySettingsKey(eventId, date);
+    const cur = daySettings.get(key) ?? { dayStart: DEFAULT_DAY_START, dayEnd: DEFAULT_DAY_END };
+    const next = { ...cur, ...patch };
+    daySettings.set(key, next);
+    return delay(next);
   },
 
   createShift: (input: NewShiftInput) => {
@@ -81,5 +127,11 @@ export const mockBackend = {
     const helper: Helper = { id: nextId('h'), ...input };
     helpers = [...helpers, helper];
     return delay(helper);
+  },
+
+  createRoleTag: (name: string, color: string) => {
+    const roleTag: RoleTag = { id: nextId('role'), name, color };
+    roleTags = [...roleTags, roleTag];
+    return delay(roleTag);
   },
 };

@@ -1,27 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Picker } from '../../components/Picker';
+import { Button } from '../../components/Button';
 import { api } from '../../shared/data/api';
 import type { EventSummary, EventTag, Helper, Shift } from '../../shared/types';
 import { colors } from '../../shared/theme/colors';
-
-interface DayGroup {
-  key: string;
-  label: string;
-  shifts: Shift[];
-}
-
-const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
-
-function formatDayLabel(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')}. ${d.toLocaleDateString('de-DE', { month: 'short' })}`;
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
+import { formatTime, groupShiftsByDay } from '../../shared/format/schedule';
+import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 
 export function HelferScreen() {
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -31,6 +16,7 @@ export function HelferScreen() {
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [nameFilter, setNameFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -53,28 +39,17 @@ export function HelferScreen() {
     });
   }, [eventId]);
 
+  const event = events.find((e) => e.id === eventId) ?? null;
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '';
   const tagName = (id: string) => tags.find((t) => t.id === id)?.name ?? '';
 
-  const dayGroups: DayGroup[] = useMemo(() => {
+  const dayGroups = useMemo(() => groupShiftsByDay(shifts), [shifts]);
+
+  const isOwnShift = (shift: Shift) => {
     const filter = nameFilter.trim().toLowerCase();
-    const filtered = filter
-      ? shifts.filter((s) => s.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter)))
-      : shifts;
-    const byDate = new Map<string, Shift[]>();
-    for (const s of filtered) {
-      const dateKey = s.startTime.slice(0, 10);
-      if (!byDate.has(dateKey)) byDate.set(dateKey, []);
-      byDate.get(dateKey)!.push(s);
-    }
-    return [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, dayShifts]) => ({
-        key: date,
-        label: formatDayLabel(date),
-        shifts: [...dayShifts].sort((a, b) => a.startTime.localeCompare(b.startTime)),
-      }));
-  }, [shifts, nameFilter, helpers]);
+    if (!filter) return false;
+    return shift.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter));
+  };
 
   return (
     <View style={styles.container}>
@@ -90,6 +65,19 @@ export function HelferScreen() {
           placeholder="Nach Namen filtern (z. B. deinem eigenen)…"
           style={styles.filterInput}
         />
+        <Button
+          label="Als PDF exportieren"
+          disabled={!event || exporting}
+          onPress={async () => {
+            if (!event) return;
+            setExporting(true);
+            try {
+              await exportSchedulePdf({ event, tags, shifts, helpers });
+            } finally {
+              setExporting(false);
+            }
+          }}
+        />
       </View>
 
       {loading ? (
@@ -103,24 +91,27 @@ export function HelferScreen() {
           renderItem={({ item: day }) => (
             <View style={styles.dayGroup}>
               <Text style={styles.dayLabel}>{day.label}</Text>
-              {day.shifts.map((shift) => (
-                <View key={shift.id} style={styles.row}>
-                  <Text style={styles.rowTime}>
-                    {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
-                  </Text>
-                  <View style={styles.rowMain}>
-                    <Text style={styles.rowName}>{shift.name}</Text>
-                    <Text style={styles.rowSub}>
-                      {tagName(shift.tagId)} · {shift.description}
+              {day.shifts.map((shift) => {
+                const own = isOwnShift(shift);
+                return (
+                  <View key={shift.id} style={[styles.row, own && styles.rowOwn]}>
+                    <Text style={styles.rowTime}>
+                      {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
+                    </Text>
+                    <View style={styles.rowMain}>
+                      <Text style={[styles.rowName, own && styles.rowNameOwn]}>{shift.name}</Text>
+                      <Text style={styles.rowSub}>
+                        {tagName(shift.tagId)} · {shift.description}
+                      </Text>
+                    </View>
+                    <Text style={styles.rowAssigned} numberOfLines={2}>
+                      {shift.assignedHelperIds.length
+                        ? shift.assignedHelperIds.map(helperName).join(', ')
+                        : 'Unbesetzt'}
                     </Text>
                   </View>
-                  <Text style={styles.rowAssigned} numberOfLines={2}>
-                    {shift.assignedHelperIds.length
-                      ? shift.assignedHelperIds.map(helperName).join(', ')
-                      : 'Unbesetzt'}
-                  </Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         />
@@ -171,9 +162,11 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
   },
+  rowOwn: { borderColor: colors.accent, backgroundColor: colors.tealBg },
   rowTime: { width: 96, fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   rowMain: { flex: 1, minWidth: 0 },
   rowName: { fontSize: 14.5, fontWeight: '600', color: colors.textPrimary },
+  rowNameOwn: { color: colors.accent },
   rowSub: { fontSize: 12.5, color: colors.textSecondary, marginTop: 1 },
   rowAssigned: { maxWidth: 220, textAlign: 'right', fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
 });

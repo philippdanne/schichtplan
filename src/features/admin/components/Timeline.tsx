@@ -1,73 +1,168 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useDroppable } from '@dnd-kit/core';
 import type { EventTag, Helper, Shift } from '../../../shared/types';
 import { colors } from '../../../shared/theme/colors';
 
-const HOUR_START = 8;
-const HOUR_END = 24;
 const PX_PER_HOUR = 56;
+const COLUMN_WIDTH = 220;
+const COLUMN_PADDING = 8;
+const LANE_GAP = 4;
 
 function minutesOfDay(iso: string): number {
   const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
+  const parts = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
+  const hours = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const minutes = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  return hours * 60 + minutes;
+}
+
+function timeToMin(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
 }
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  const formatter = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return formatter.format(d);
+}
+
+function formatMinLabel(min: number): string {
+  const clock = ((min % 1440) + 1440) % 1440;
+  return `${Math.floor(clock / 60).toString().padStart(2, '0')}:00`;
+}
+
+/** Cluster+lane layout for time-overlapping shifts, so they render as
+ * side-by-side parallel tracks instead of stacking on top of each other. */
+function layoutOverlaps(items: Shift[], resolveMin: (min: number) => number): Map<string, { lane: number; lanes: number }> {
+  const withRange = items
+    .map((s) => ({ shift: s, start: resolveMin(minutesOfDay(s.startTime)), end: resolveMin(minutesOfDay(s.endTime)) }))
+    .sort((a, b) => a.start - b.start);
+
+  const result = new Map<string, { lane: number; lanes: number }>();
+  let cluster: typeof withRange = [];
+  let clusterMaxEnd = -Infinity;
+
+  function flush() {
+    if (cluster.length === 0) return;
+    const laneEnds: number[] = [];
+    const laneOf = new Map<string, number>();
+    for (const item of cluster) {
+      let laneIdx = laneEnds.findIndex((end) => end <= item.start);
+      if (laneIdx === -1) {
+        laneIdx = laneEnds.length;
+        laneEnds.push(item.end);
+      } else {
+        laneEnds[laneIdx] = item.end;
+      }
+      laneOf.set(item.shift.id, laneIdx);
+    }
+    const lanes = laneEnds.length;
+    for (const item of cluster) result.set(item.shift.id, { lane: laneOf.get(item.shift.id)!, lanes });
+    cluster = [];
+    clusterMaxEnd = -Infinity;
+  }
+
+  for (const item of withRange) {
+    if (cluster.length === 0 || item.start < clusterMaxEnd) {
+      cluster.push(item);
+      clusterMaxEnd = Math.max(clusterMaxEnd, item.end);
+    } else {
+      flush();
+      cluster.push(item);
+      clusterMaxEnd = item.end;
+    }
+  }
+  flush();
+  return result;
 }
 
 interface Props {
   tags: EventTag[];
   shifts: Shift[];
   helpers: Helper[];
+  dayStart: string;
+  dayEnd: string;
   dragEnabled: boolean;
   selectedHelperId: string | null;
   onAssignSelected: (shiftId: string) => void;
   onEditShift: (shift: Shift) => void;
   onDeleteShift: (shiftId: string) => void;
   onUnassign: (shiftId: string, helperId: string) => void;
+  onCreateShift: (tagId: string, start: string, end: string) => void;
 }
 
 export function Timeline(props: Props) {
   const { tags, shifts, helpers } = props;
-  const height = (HOUR_END - HOUR_START) * PX_PER_HOUR;
-  const ticks = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
+  const dayStartMin = timeToMin(props.dayStart);
+  const dayEndMinRaw = timeToMin(props.dayEnd);
+  const dayEndMin = dayEndMinRaw <= dayStartMin ? dayEndMinRaw + 1440 : dayEndMinRaw;
+  // Only wrap early-morning clock times into "tomorrow" when the day
+  // actually spans midnight (dayEnd <= dayStart) — and only the clock times
+  // that fall in that early-morning sliver (before the raw, un-extended
+  // dayEnd). Wrapping on `clockMin < dayStartMin` alone (the previous logic)
+  // wrapped any shift starting before dayStart even on an ordinary
+  // same-day range, corrupting start/end by wrapping one but not the other.
+  const spansMidnight = dayEndMinRaw <= dayStartMin;
+  const resolveMin = (clockMin: number) => (spansMidnight && clockMin < dayEndMinRaw ? clockMin + 1440 : clockMin);
+  const height = ((dayEndMin - dayStartMin) / 60) * PX_PER_HOUR;
+  const tickCount = Math.round((dayEndMin - dayStartMin) / 60) + 1;
+  const ticks = Array.from({ length: tickCount }, (_, i) => dayStartMin + i * 60);
   const helperName = (id: string) => helpers.find((h) => h.id === id)?.name ?? '?';
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  function handleColumnCreate(tagId: string, startMin: number, endMin: number) {
+    const clamp = (m: number) => Math.max(0, Math.min(1439, m));
+    const toHHMM = (m: number) => `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
+    const s = clamp(startMin);
+    const e = clamp(endMin) <= s ? Math.min(1439, s + 60) : clamp(endMin);
+    props.onCreateShift(tagId, toHHMM(s), toHHMM(e));
+  }
 
   return (
     <View style={styles.wrap}>
       <ScrollView contentContainerStyle={{ flexDirection: 'row' }}>
         <View style={[styles.hourRail, { height }]}>
-          {ticks.map((h) => (
-            <Text key={h} style={[styles.hourTick, { top: (h - HOUR_START) * PX_PER_HOUR - 6 }]}>
-              {h.toString().padStart(2, '0')}:00
+          {ticks.map((min) => (
+            <Text key={min} style={[styles.hourTick, { top: ((min - dayStartMin) / 60) * PX_PER_HOUR - 6 }]}>
+              {formatMinLabel(min)}
             </Text>
           ))}
         </View>
         {tags.map((tag) => {
           const columnShifts = shifts.filter((s) => s.tagId === tag.id);
-          return (
-            <View key={tag.id} style={[styles.column, { height }]}>
+          const lanesById = layoutOverlaps(columnShifts, resolveMin);
+          const columnBody = (
+            <View style={[styles.column, { height }]}>
               <View style={styles.columnHeader}>
                 <Text style={styles.columnHeaderLabel}>{tag.name}</Text>
               </View>
               {columnShifts.map((shift) => {
-                const top = ((minutesOfDay(shift.startTime) - HOUR_START * 60) / 60) * PX_PER_HOUR;
+                const top = ((resolveMin(minutesOfDay(shift.startTime)) - dayStartMin) / 60) * PX_PER_HOUR;
                 const heightPx = Math.max(
                   32,
-                  ((minutesOfDay(shift.endTime) - minutesOfDay(shift.startTime)) / 60) * PX_PER_HOUR
+                  ((resolveMin(minutesOfDay(shift.endTime)) - resolveMin(minutesOfDay(shift.startTime))) / 60) * PX_PER_HOUR
                 );
+                const { lane, lanes } = lanesById.get(shift.id) ?? { lane: 0, lanes: 1 };
+                const innerWidth = COLUMN_WIDTH - COLUMN_PADDING * 2;
+                const laneWidth = (innerWidth - LANE_GAP * (lanes - 1)) / lanes;
+                const left = COLUMN_PADDING + lane * (laneWidth + LANE_GAP);
                 return (
-                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx }]}>
+                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx, left, width: laneWidth }]}>
                     {props.dragEnabled ? (
                       <DroppableShiftBlock shiftId={shift.id}>
                         <ShiftBlockContent
                           shift={shift}
                           helperName={helperName}
+                          confirming={confirmingId === shift.id}
                           onEdit={() => props.onEditShift(shift)}
-                          onDelete={() => props.onDeleteShift(shift.id)}
+                          onStartDelete={() => setConfirmingId(shift.id)}
+                          onCancelDelete={() => setConfirmingId(null)}
+                          onConfirmDelete={() => {
+                            setConfirmingId(null);
+                            props.onDeleteShift(shift.id);
+                          }}
                           onUnassign={(helperId) => props.onUnassign(shift.id, helperId)}
                         />
                       </DroppableShiftBlock>
@@ -84,8 +179,14 @@ export function Timeline(props: Props) {
                         <ShiftBlockContent
                           shift={shift}
                           helperName={helperName}
+                          confirming={confirmingId === shift.id}
                           onEdit={() => props.onEditShift(shift)}
-                          onDelete={() => props.onDeleteShift(shift.id)}
+                          onStartDelete={() => setConfirmingId(shift.id)}
+                          onCancelDelete={() => setConfirmingId(null)}
+                          onConfirmDelete={() => {
+                            setConfirmingId(null);
+                            props.onDeleteShift(shift.id);
+                          }}
                           onUnassign={(helperId) => props.onUnassign(shift.id, helperId)}
                         />
                       </Pressable>
@@ -95,9 +196,91 @@ export function Timeline(props: Props) {
               })}
             </View>
           );
+
+          return props.dragEnabled ? (
+            <DragCreateColumn
+              key={tag.id}
+              height={height}
+              dayStartMin={dayStartMin}
+              onCreate={(startMin, endMin) => handleColumnCreate(tag.id, startMin, endMin)}
+            >
+              {columnBody}
+            </DragCreateColumn>
+          ) : (
+            <React.Fragment key={tag.id}>{columnBody}</React.Fragment>
+          );
         })}
       </ScrollView>
     </View>
+  );
+}
+
+function DragCreateColumn({
+  height,
+  dayStartMin,
+  onCreate,
+  children,
+}: {
+  height: number;
+  dayStartMin: number;
+  onCreate: (startMin: number, endMin: number) => void;
+  children: React.ReactNode;
+}) {
+  // Plain DOM node, same reasoning as DroppableShiftBlock/DraggableHelperCard
+  // — needs real window-level mouse tracking for the drag gesture, and only
+  // ever renders when dragEnabled (web/tablet).
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<{ startY: number; currentY: number } | null>(null);
+
+  function yToMin(y: number): number {
+    return Math.round((dayStartMin + (y / PX_PER_HOUR) * 60) / 15) * 15;
+  }
+
+  function handleMouseDown(e: React.MouseEvent) {
+    // Ignore mousedowns that started on a shift block — only bare column
+    // background starts a create-drag. The inner column View fills the
+    // whole wrapper, so target===currentTarget never holds; walk the real
+    // DOM instead via the marker DroppableShiftBlock sets on itself.
+    if ((e.target as HTMLElement).closest('[data-shift-block]')) return;
+    const rect = ref.current!.getBoundingClientRect();
+    const startY = e.clientY - rect.top;
+    setDrag({ startY, currentY: startY });
+
+    function handleMove(ev: MouseEvent) {
+      const currentY = ev.clientY - rect.top;
+      setDrag((d) => (d ? { ...d, currentY } : d));
+    }
+    function handleUp(ev: MouseEvent) {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      const endY = ev.clientY - rect.top;
+      setDrag((d) => {
+        if (!d) return null;
+        const dragged = Math.abs(endY - d.startY) > 4;
+        const startMin = yToMin(Math.min(d.startY, endY));
+        const endMin = dragged ? yToMin(Math.max(d.startY, endY)) : startMin + 60;
+        onCreate(startMin, endMin);
+        return null;
+      });
+    }
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  }
+
+  const previewTop = drag ? Math.min(drag.startY, drag.currentY) : 0;
+  const previewHeight = drag ? Math.max(2, Math.abs(drag.currentY - drag.startY)) : 0;
+
+  return (
+    <div
+      ref={ref}
+      onMouseDown={handleMouseDown}
+      style={{ position: 'relative', height, width: COLUMN_WIDTH, cursor: 'crosshair', flexShrink: 0 }}
+    >
+      {children}
+      {drag && (
+        <View style={[styles.dragPreview, { top: previewTop, height: previewHeight }]} pointerEvents="none" />
+      )}
+    </div>
   );
 }
 
@@ -106,7 +289,7 @@ function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children:
   // Plain DOM node for the same reason as DraggableHelperCard in
   // HelperPool.tsx — only rendered on web.
   return (
-    <div ref={setNodeRef} style={{ height: '100%' }}>
+    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%' }}>
       <View style={[styles.block, isOver && styles.blockOver]}>{children}</View>
     </div>
   );
@@ -115,16 +298,37 @@ function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children:
 function ShiftBlockContent({
   shift,
   helperName,
+  confirming,
   onEdit,
-  onDelete,
+  onStartDelete,
+  onCancelDelete,
+  onConfirmDelete,
   onUnassign,
 }: {
   shift: Shift;
   helperName: (id: string) => string;
+  confirming: boolean;
   onEdit: () => void;
-  onDelete: () => void;
+  onStartDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
   onUnassign: (helperId: string) => void;
 }) {
+  if (confirming) {
+    return (
+      <View style={styles.confirmWrap}>
+        <Text style={styles.confirmLabel}>Schicht löschen?</Text>
+        <View style={styles.confirmActions}>
+          <Pressable onPress={onConfirmDelete} style={styles.confirmYes}>
+            <Text style={styles.confirmYesLabel}>Ja</Text>
+          </Pressable>
+          <Pressable onPress={onCancelDelete} style={styles.confirmNo}>
+            <Text style={styles.confirmNoLabel}>Nein</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.blockTopRow}>
@@ -140,7 +344,7 @@ function ShiftBlockContent({
           <Pressable onPress={onEdit} style={styles.iconButton}>
             <Text style={styles.iconButtonLabel}>✎</Text>
           </Pressable>
-          <Pressable onPress={onDelete} style={styles.iconButton}>
+          <Pressable onPress={onStartDelete} style={styles.iconButton}>
             <Text style={styles.iconButtonLabel}>✕</Text>
           </Pressable>
         </View>
@@ -185,7 +389,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  blockPosition: { position: 'absolute', left: 8, right: 8 },
+  blockPosition: { position: 'absolute' },
   block: {
     flex: 1,
     borderRadius: 9,
@@ -232,4 +436,21 @@ const styles = StyleSheet.create({
   },
   chipRemoveLabel: { fontSize: 9, color: colors.textSecondary },
   unassignedLabel: { fontSize: 11, color: colors.danger, fontWeight: '500' },
+  confirmWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  confirmLabel: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+  confirmActions: { flexDirection: 'row', gap: 8 },
+  confirmYes: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.danger },
+  confirmYesLabel: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  confirmNo: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface },
+  confirmNoLabel: { fontSize: 12, color: colors.textPrimary },
+  dragPreview: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.teal,
+    backgroundColor: colors.tealBg,
+  },
 });
