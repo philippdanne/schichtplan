@@ -45,11 +45,17 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
 
   const dayGroups = useMemo(() => groupShiftsByDay(shifts), [shifts]);
 
-  const isOwnShift = (shift: Shift) => {
+  const helperNameOptions = useMemo(() => {
+    const names = Array.from(new Set(helpers.map((h) => h.name))).sort((a, b) => a.localeCompare(b, 'de'));
+    return [{ value: '', label: '— Name wählen —' }, ...names.map((n) => ({ value: n, label: n }))];
+  }, [helpers]);
+
+  const isOwnHelper = (id: string) => {
     const filter = nameFilter.trim().toLowerCase();
     if (!filter) return false;
-    return shift.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter));
+    return helperName(id).toLowerCase().includes(filter);
   };
+  const isOwnShift = (shift: Shift) => shift.assignedHelperIds.some(isOwnHelper);
 
   return (
     <View style={styles.container}>
@@ -59,10 +65,15 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
           options={events.map((e) => ({ value: e.id, label: e.name }))}
           onChange={setEventId}
         />
+        <Picker
+          value={helperNameOptions.some((o) => o.value === nameFilter) ? nameFilter : ''}
+          options={helperNameOptions}
+          onChange={setNameFilter}
+        />
         <TextInput
           value={nameFilter}
           onChangeText={setNameFilter}
-          placeholder="Nach Namen filtern (z. B. deinem eigenen)…"
+          placeholder="…oder Namen eingeben"
           style={styles.filterInput}
         />
         <Button
@@ -104,11 +115,19 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
                         {tagName(shift.tagId)} · {shift.description}
                       </Text>
                     </View>
-                    <Text style={styles.rowAssigned} numberOfLines={2}>
-                      {shift.assignedHelperIds.length
-                        ? shift.assignedHelperIds.map(helperName).join(', ')
-                        : 'Unbesetzt'}
-                    </Text>
+                    <View style={styles.assignedWrap}>
+                      {shift.assignedHelperIds.length ? (
+                        shift.assignedHelperIds.map((id) => (
+                          <View key={id} style={[styles.helperChip, isOwnHelper(id) && styles.helperChipOwn]}>
+                            <Text style={[styles.helperChipLabel, isOwnHelper(id) && styles.helperChipLabelOwn]}>
+                              {helperName(id)}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.unassignedLabel}>Unbesetzt</Text>
+                      )}
+                    </View>
                   </View>
                 );
               })}
@@ -168,5 +187,21 @@ const styles = StyleSheet.create({
   rowName: { fontSize: 14.5, fontWeight: '600', color: colors.textPrimary },
   rowNameOwn: { color: colors.accent },
   rowSub: { fontSize: 12.5, color: colors.textSecondary, marginTop: 1 },
-  rowAssigned: { maxWidth: 220, textAlign: 'right', fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
+  assignedWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+    maxWidth: 280,
+  },
+  helperChip: {
+    backgroundColor: colors.chipBg,
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 11,
+  },
+  helperChipOwn: { backgroundColor: colors.accent },
+  helperChipLabel: { fontSize: 12.5, fontWeight: '600', color: colors.textPrimary },
+  helperChipLabelOwn: { color: colors.accentContrast },
+  unassignedLabel: { fontSize: 13, color: colors.danger, fontWeight: '500' },
 });
