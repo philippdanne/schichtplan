@@ -305,9 +305,12 @@ function DragCreateColumn({
 function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `shift:${shiftId}` });
   // Plain DOM node for the same reason as DraggableHelperCard in
-  // HelperPool.tsx — only rendered on web.
+  // HelperPool.tsx — only rendered on web. Needs `display: flex` — a plain
+  // div isn't a flex container, so the inner View's `flex: 1` (which is
+  // what makes it fill this wrapper's full height instead of shrinking to
+  // its text content) would otherwise silently do nothing.
   return (
-    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%' }}>
+    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%', display: 'flex' }}>
       <View style={[styles.block, isOver && styles.blockOver]}>{children}</View>
     </div>
   );
