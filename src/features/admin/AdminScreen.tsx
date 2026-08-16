@@ -253,11 +253,13 @@ export function AdminScreen() {
         onClose={() => setShiftModal({ open: false, editing: null, prefill: null })}
         onSave={async (value: ShiftFormValue) => {
           if (!eventId || !currentDate) return;
-          const localStart = `${currentDate}T${value.start}:00`;
-          const localEnd = `${currentDate}T${value.end}:00`;
-          const offset = new Date(localStart).getTimezoneOffset() * 60 * 1000;
-          const startTime = new Date(new Date(localStart).getTime() + offset).toISOString();
-          const endTime = new Date(new Date(localEnd).getTime() + offset).toISOString();
+          // `new Date("YYYY-MM-DDTHH:MM:SS")` without a timezone suffix is
+          // parsed as local time per the ECMAScript Date Time String Format,
+          // so .getTime() already yields the correct UTC instant — no manual
+          // offset math needed. toISOString() then serializes it
+          // unambiguously (with a "Z" suffix) for storage.
+          const startTime = new Date(`${currentDate}T${value.start}:00`).toISOString();
+          const endTime = new Date(`${currentDate}T${value.end}:00`).toISOString();
           if (shiftModal.editing) {
             const updated = await api.updateShift(shiftModal.editing.id, {
               name: value.name,
