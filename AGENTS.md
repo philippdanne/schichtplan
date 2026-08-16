@@ -37,6 +37,13 @@ sich geändert:
   `src/features/admin/AdminGate.tsx`.
 - **Helfer-Ansicht bleibt ohne Login** — rein lesend, kein Auth-Check, per
   Design-Vorgabe.
+- **Share-Link** (`src/shared/data/shareLink.ts`): Admin-Button "An Helfer
+  teilen" hängt `?event=<id>` an die aktuelle URL. Da die Helfer-Ansicht
+  bereits login-frei und rein lesend ist, ist "passwortlos teilen" damit
+  bereits erfüllt — der Link muss nur direkt zum richtigen Event
+  durchspringen. `App.tsx` liest den Parameter einmalig beim Start
+  (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
+  `HelferScreen` durch. Web-only (kein `window.location` auf nativ).
 - Jede eingeloggte Person gilt als Admin — es gibt keine separate
   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
   gewähren Schreibzugriff an jede `authenticated`-Session.

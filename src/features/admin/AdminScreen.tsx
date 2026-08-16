@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { Picker } from '../../components/Picker';
 import { Button } from '../../components/Button';
@@ -10,11 +10,13 @@ import { EventFormModal } from './components/EventFormModal';
 import { HelperFormModal } from './components/HelperFormModal';
 import { AblaufplanModal } from './components/AblaufplanModal';
 import { TagsModal } from './components/TagsModal';
+import { ShareLinkModal } from './components/ShareLinkModal';
 import { api } from '../../shared/data/api';
 import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
 import { colors } from '../../shared/theme/colors';
 import { formatDayLabel, dateRange } from '../../shared/format/schedule';
 import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
+import { buildShareLink } from '../../shared/data/shareLink';
 import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
 
 export function AdminScreen() {
@@ -41,6 +43,7 @@ export function AdminScreen() {
   const [tagsModalOpen, setTagsModalOpen] = useState(false);
   const [daySettings, setDaySettings] = useState({ dayStart: '10:00', dayEnd: '00:00' });
   const [exporting, setExporting] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   useEffect(() => {
     api.listEvents().then((evs) => {
@@ -228,6 +231,9 @@ export function AdminScreen() {
           />
         </View>
         <View style={{ flex: 1 }} />
+        {Platform.OS === 'web' && (
+          <Button label="An Helfer teilen" disabled={!event} onPress={() => setShareModalOpen(true)} />
+        )}
         <Button
           label="+ Neue Schicht"
           variant="primary"
@@ -346,6 +352,15 @@ export function AdminScreen() {
           return created;
         }}
       />
+
+      {event && (
+        <ShareLinkModal
+          visible={shareModalOpen}
+          eventName={event.name}
+          link={buildShareLink(event.id)}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
     </View>
   );
 }

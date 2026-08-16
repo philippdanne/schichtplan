@@ -8,7 +8,7 @@ import { colors } from '../../shared/theme/colors';
 import { formatTime, groupShiftsByDay } from '../../shared/format/schedule';
 import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 
-export function HelferScreen() {
+export function HelferScreen({ initialEventId }: { initialEventId?: string | null }) {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
   const [tags, setTags] = useState<EventTag[]>([]);
@@ -21,10 +21,10 @@ export function HelferScreen() {
   useEffect(() => {
     api.listEvents().then((evs) => {
       setEvents(evs);
-      setEventId((cur) => cur ?? evs[0]?.id ?? null);
+      setEventId((cur) => cur ?? initialEventId ?? evs[0]?.id ?? null);
     });
     api.listHelpers().then(setHelpers);
-  }, []);
+  }, [initialEventId]);
 
   useEffect(() => {
     if (!eventId) return;
