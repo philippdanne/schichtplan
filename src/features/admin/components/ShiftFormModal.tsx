@@ -62,7 +62,7 @@ export function ShiftFormModal({
     if (!name.trim()) return setError('Name darf nicht leer sein.');
     if (!tagId) return setError('Bitte eine Spalte wählen.');
     if (!TIME_RE.test(start) || !TIME_RE.test(end)) return setError('Uhrzeit im Format HH:MM angeben.');
-    if (start >= end) return setError('Ende muss nach dem Start liegen.');
+    if (start === end) return setError('Start und Ende dürfen nicht gleich sein.');
     setSaving(true);
     try {
       await onSave({ name: name.trim(), description: description.trim(), tagId, start, end });
@@ -96,6 +96,10 @@ export function ShiftFormModal({
             </Field>
           </View>
         </View>
+        <Text style={styles.hint}>
+          Endet die Schicht nach Mitternacht? Einfach eine Uhrzeit vor dem Start eingeben (z. B. 20:00–01:00) — gilt
+          automatisch als nächster Tag.
+        </Text>
         {error && <Text style={styles.error}>{error}</Text>}
       </View>
       <View style={styles.footer}>
@@ -127,6 +131,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     backgroundColor: colors.surface,
   },
+  hint: { fontSize: 12, color: colors.textSecondary, lineHeight: 16 },
   error: { fontSize: 12.5, color: colors.danger },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 },
 });

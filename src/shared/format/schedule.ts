@@ -22,15 +22,32 @@ export function formatTime(iso: string): string {
   return formatter.format(d);
 }
 
+// cur.toISOString().slice(0, 10) would convert through UTC first, which
+// shifts the date back a day in any timezone ahead of UTC (e.g. local
+// midnight in CEST is still 22:00 the previous day in UTC) — read the
+// local calendar fields directly instead.
+function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function dateRange(startDate: string, endDate: string): string[] {
   const out: string[] = [];
   const cur = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
   while (cur <= end) {
-    out.push(cur.toISOString().slice(0, 10));
+    out.push(toDateStr(cur));
     cur.setDate(cur.getDate() + 1);
   }
   return out;
+}
+
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return toDateStr(d);
 }
 
 export interface DayGroup {

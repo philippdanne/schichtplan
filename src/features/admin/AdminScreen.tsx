@@ -14,7 +14,7 @@ import { ShareLinkModal } from './components/ShareLinkModal';
 import { api } from '../../shared/data/api';
 import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
 import { colors } from '../../shared/theme/colors';
-import { formatDayLabel, dateRange } from '../../shared/format/schedule';
+import { formatDayLabel, dateRange, addDays } from '../../shared/format/schedule';
 import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
 import { buildShareLink } from '../../shared/data/shareLink';
 import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
@@ -264,8 +264,11 @@ export function AdminScreen() {
           // so .getTime() already yields the correct UTC instant — no manual
           // offset math needed. toISOString() then serializes it
           // unambiguously (with a "Z" suffix) for storage.
+          // An end time that's not after the start time (e.g. 20:00–01:00)
+          // means the shift crosses midnight — it belongs on the next day.
+          const endDate = value.end <= value.start ? addDays(currentDate, 1) : currentDate;
           const startTime = new Date(`${currentDate}T${value.start}:00`).toISOString();
-          const endTime = new Date(`${currentDate}T${value.end}:00`).toISOString();
+          const endTime = new Date(`${endDate}T${value.end}:00`).toISOString();
           if (shiftModal.editing) {
             const updated = await api.updateShift(shiftModal.editing.id, {
               name: value.name,

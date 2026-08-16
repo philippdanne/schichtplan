@@ -112,10 +112,19 @@ export function Timeline(props: Props) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   function handleColumnCreate(tagId: string, startMin: number, endMin: number) {
-    const clamp = (m: number) => Math.max(0, Math.min(1439, m));
-    const toHHMM = (m: number) => `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
+    // Clamp against the day's own (possibly midnight-spanning) extended
+    // range, not a hardcoded 0–1439, so dragging near the bottom of a day
+    // configured to run past midnight (e.g. dayEnd "02:00") can still
+    // produce an end time after 00:00. toHHMM wraps back into a plain
+    // clock time — the resulting end<=start pair reads as "next day" the
+    // same way a manually-typed 20:00–01:00 shift does (see AdminScreen).
+    const clamp = (m: number) => Math.max(0, Math.min(dayEndMin, m));
+    const toHHMM = (m: number) => {
+      const clock = ((m % 1440) + 1440) % 1440;
+      return `${Math.floor(clock / 60).toString().padStart(2, '0')}:${(clock % 60).toString().padStart(2, '0')}`;
+    };
     const s = clamp(startMin);
-    const e = clamp(endMin) <= s ? Math.min(1439, s + 60) : clamp(endMin);
+    const e = clamp(endMin) <= s ? Math.min(dayEndMin, s + 60) : clamp(endMin);
     props.onCreateShift(tagId, toHHMM(s), toHHMM(e));
   }
 
