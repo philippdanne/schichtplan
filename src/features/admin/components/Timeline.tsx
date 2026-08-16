@@ -22,65 +22,10 @@ function timeToMin(t: string): number {
   return h * 60 + m;
 }
 
-function timeToMin(t: string): number {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const formatter = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
   return formatter.format(d);
-}
-
-function formatMinLabel(min: number): string {
-  const clock = ((min % 1440) + 1440) % 1440;
-  return `${Math.floor(clock / 60).toString().padStart(2, '0')}:00`;
-}
-
-/** Cluster+lane layout for time-overlapping shifts, so they render as
- * side-by-side parallel tracks instead of stacking on top of each other. */
-function layoutOverlaps(items: Shift[], resolveMin: (min: number) => number): Map<string, { lane: number; lanes: number }> {
-  const withRange = items
-    .map((s) => ({ shift: s, start: resolveMin(minutesOfDay(s.startTime)), end: resolveMin(minutesOfDay(s.endTime)) }))
-    .sort((a, b) => a.start - b.start);
-
-  const result = new Map<string, { lane: number; lanes: number }>();
-  let cluster: typeof withRange = [];
-  let clusterMaxEnd = -Infinity;
-
-  function flush() {
-    if (cluster.length === 0) return;
-    const laneEnds: number[] = [];
-    const laneOf = new Map<string, number>();
-    for (const item of cluster) {
-      let laneIdx = laneEnds.findIndex((end) => end <= item.start);
-      if (laneIdx === -1) {
-        laneIdx = laneEnds.length;
-        laneEnds.push(item.end);
-      } else {
-        laneEnds[laneIdx] = item.end;
-      }
-      laneOf.set(item.shift.id, laneIdx);
-    }
-    const lanes = laneEnds.length;
-    for (const item of cluster) result.set(item.shift.id, { lane: laneOf.get(item.shift.id)!, lanes });
-    cluster = [];
-    clusterMaxEnd = -Infinity;
-  }
-
-  for (const item of withRange) {
-    if (cluster.length === 0 || item.start < clusterMaxEnd) {
-      cluster.push(item);
-      clusterMaxEnd = Math.max(clusterMaxEnd, item.end);
-    } else {
-      flush();
-      cluster.push(item);
-      clusterMaxEnd = item.end;
-    }
-  }
-  flush();
-  return result;
 }
 
 function formatMinLabel(min: number): string {
