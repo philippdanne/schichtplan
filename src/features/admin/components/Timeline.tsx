@@ -6,7 +6,6 @@ import { colors } from '../../../shared/theme/colors';
 
 const PX_PER_HOUR = 56;
 const COLUMN_WIDTH = 220;
-const COLUMN_PADDING = 8;
 const LANE_GAP = 4;
 
 function minutesOfDay(iso: string): number {
@@ -177,7 +176,7 @@ export function Timeline(props: Props) {
 
   return (
     <View style={styles.wrap}>
-      <ScrollView contentContainerStyle={{ flexDirection: 'row' }}>
+      <ScrollView contentContainerStyle={{ flexDirection: 'row', minWidth: '100%' }}>
         <View style={[styles.hourRail, { height }]}>
           {ticks.map((min) => (
             <Text key={min} style={[styles.hourTick, { top: ((min - dayStartMin) / 60) * PX_PER_HOUR - 6 }]}>
@@ -200,11 +199,13 @@ export function Timeline(props: Props) {
                   ((resolveMin(minutesOfDay(shift.endTime)) - resolveMin(minutesOfDay(shift.startTime))) / 60) * PX_PER_HOUR
                 );
                 const { lane, lanes } = lanesById.get(shift.id) ?? { lane: 0, lanes: 1 };
-                const innerWidth = COLUMN_WIDTH - COLUMN_PADDING * 2;
-                const laneWidth = (innerWidth - LANE_GAP * (lanes - 1)) / lanes;
-                const left = COLUMN_PADDING + lane * (laneWidth + LANE_GAP);
+                const laneWidthPct = 100 / lanes;
+                const leftPct = lane * laneWidthPct;
                 return (
-                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx, left, width: laneWidth }]}>
+                  <View
+                    key={shift.id}
+                    style={[styles.blockPosition, { top, height: heightPx, left: `${leftPct}%`, width: `${laneWidthPct}%` }]}
+                  >
                     {props.dragEnabled ? (
                       <DroppableShiftBlock shiftId={shift.id}>
                         <ShiftBlockContent
@@ -329,7 +330,15 @@ function DragCreateColumn({
     <div
       ref={ref}
       onMouseDown={handleMouseDown}
-      style={{ position: 'relative', height, width: COLUMN_WIDTH, cursor: 'crosshair', flexShrink: 0 }}
+      style={{
+        position: 'relative',
+        height,
+        flex: 1,
+        flexBasis: COLUMN_WIDTH,
+        flexShrink: 0,
+        minWidth: COLUMN_WIDTH,
+        cursor: 'crosshair',
+      }}
     >
       {children}
       {drag && (
@@ -426,7 +435,10 @@ const styles = StyleSheet.create({
   hourRail: { width: 56, position: 'relative', borderRightWidth: 1, borderRightColor: colors.border },
   hourTick: { position: 'absolute', right: 6, fontSize: 11, color: colors.textSecondary },
   column: {
-    width: 220,
+    flex: 1,
+    flexBasis: COLUMN_WIDTH,
+    flexShrink: 0,
+    minWidth: COLUMN_WIDTH,
     position: 'relative',
     borderRightWidth: 1,
     borderRightColor: colors.border,
@@ -444,7 +456,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  blockPosition: { position: 'absolute' },
+  blockPosition: { position: 'absolute', paddingHorizontal: LANE_GAP / 2 },
   block: {
     flex: 1,
     borderRadius: 9,
