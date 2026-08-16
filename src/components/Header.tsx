@@ -4,14 +4,27 @@ import { colors } from '../shared/theme/colors';
 
 export type Mode = 'admin' | 'helfer';
 
-export function Header({ mode, onModeChange }: { mode: Mode; onModeChange: (m: Mode) => void }) {
+export function Header({
+  mode,
+  onModeChange,
+  showAdminTab = true,
+}: {
+  mode: Mode;
+  onModeChange: (m: Mode) => void;
+  /** false for the passwordless shared Helfer link — no reason to surface the Admin login there. */
+  showAdminTab?: boolean;
+}) {
   return (
     <View style={styles.header}>
       <Text style={styles.title}>Schichtplaner</Text>
-      <View style={styles.tabs}>
-        <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
-        <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
-      </View>
+      {showAdminTab ? (
+        <View style={styles.tabs}>
+          <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
+          <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
+        </View>
+      ) : (
+        <View />
+      )}
       <View style={styles.spacer} />
     </View>
   );

@@ -43,7 +43,10 @@ sich geändert:
   bereits erfüllt — der Link muss nur direkt zum richtigen Event
   durchspringen. `App.tsx` liest den Parameter einmalig beim Start
   (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
-  `HelferScreen` durch. Web-only (kein `window.location` auf nativ).
+  `HelferScreen` durch. Web-only (kein `window.location` auf nativ). Über
+  einen Share-Link ist der Admin-Tab im Header ausgeblendet
+  (`Header`-Prop `showAdminTab`), damit die geteilte Ansicht sich nicht wie
+  ein Admin-Tool präsentiert.
 - Jede eingeloggte Person gilt als Admin — es gibt keine separate
   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
   gewähren Schreibzugriff an jede `authenticated`-Session.
@@ -54,6 +57,19 @@ sich geändert:
 - Ohne konfiguriertes Supabase-Projekt (kein `.env`) läuft der Admin-Bereich
   lokal ungeschützt mit Mock-Daten weiter (sichtbar als Banner) — es gibt
   sonst keine Möglichkeit, lokal ohne Backend eine Session zu erzeugen.
+
+## Schichten über Mitternacht
+
+Eine Schicht darf über 00:00 hinausgehen (z. B. 20:00–01:00). Erkennung:
+Ende ≤ Start im Formular bedeutet "endet am nächsten Tag" — kein separates
+Datumsfeld nötig. `AdminScreen.tsx`s Save-Handler berechnet das Enddatum
+entsprechend (`addDays` aus `schedule.ts`); die DB-Check-Constraint
+(`end_time > start_time`) bleibt dadurch immer erfüllt. Damit eine solche
+Schicht in der Timeline sichtbar ist, muss der Tag selbst über Mitternacht
+hinaus laufen (Tag-Ende in der Toolbar entsprechend spät setzen, z. B.
+02:00) — die vorhandene Tag-Zeitspannen-Logik (`Timeline.tsx`,
+`resolveMin`/`spansMidnight`) rendert die Schicht dann automatisch korrekt
+in die verlängerte Spalte hinein.
 
 ## Datenzugriff
 

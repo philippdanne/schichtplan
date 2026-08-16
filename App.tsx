@@ -19,7 +19,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SafeAreaView style={styles.container}>
-        <Header mode={mode} onModeChange={setMode} />
+        <Header mode={mode} onModeChange={setMode} showAdminTab={!sharedEventId} />
         {mode === 'admin' ? <AdminGate /> : <HelferScreen initialEventId={sharedEventId} />}
         <StatusBar style="auto" />
       </SafeAreaView>
