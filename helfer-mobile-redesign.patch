@@ -1,0 +1,1162 @@
+From 58911c21bf3e1f8a611e8036651065e2e800e04e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 17 Aug 2026 14:26:14 +0000
+Subject: [PATCH] Rebuild the Helfer view mobile-first from a Claude Design
+ handoff
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Implemented from design/project/Helferansicht Mobil.dc.html (imported
+from the Claude Design project the user shared). Full rewrite of
+HelferScreen.tsx, replacing the previous name-filter Picker+TextInput
+combo entirely:
+
+- "Wer bist du?" flow: a prominent button opens a search-and-pick panel
+  scoped to names actually assigned somewhere in the current event
+  (not the whole org-wide helper pool), with a fallback to freely type
+  an unlisted name. Once picked, shows a "Du bist X" pill plus a "Nur
+  meine Schichten zeigen" toggle that regroups the list by day and
+  filters to just that person's shifts.
+- Sticky day tabs (weekday + date, two-line) replace the old single
+  long scrolling list of all days at once — formatDayTabParts() added
+  to schedule.ts for the split label.
+- Assigned helpers render as chips, own name pinned first and
+  highlighted, collapsed to 4 with a "+N weitere" expand toggle instead
+  of wrapping indefinitely (the previous chip redesign still truncated
+  awkwardly on shifts with many helpers).
+- "Your shift" cards get a light accent tint (colors.accentBg, a
+  precomputed ~10% mix since color-mix() has no native iOS/Android
+  equivalent), thicker accent left border, and a corner badge;
+  unbesetzt shifts get a danger-colored left border instead.
+- PDF export demoted to a subtle footer text link — secondary on
+  mobile, matching the design intent explicitly discussed beforehand.
+- Page is a centered 430px-max column regardless of viewport, mobile
+  layout everywhere rather than a separate desktop variant.
+
+App.tsx no longer renders the outer app-chrome Header at all when
+accessed via a share link, since HelferScreen now has its own title +
+event picker and the old header would just be redundant chrome eating
+mobile screen space. Removed the now-dead showAdminTab prop from
+Header.tsx that this supersedes.
+
+Hit the same z-index stacking bug fixed earlier for the Admin toolbar
+dropdown: the picker panel's own zIndex only matters within its
+nearest positioned ancestor's stacking context, so whoBox needed a
+zIndex above the sticky day-tabs bar's, not just above its siblings
+inside itself.
+
+Verified live at 390px viewport: name search/pick, own-shift
+highlighting, chip overflow with 7 assigned helpers, "nur meine"
+filtering across days, unbesetzt styling, empty state, and that the
+picker panel now correctly renders above the sticky tab bar instead of
+behind it.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ AGENTS.md                                  |  43 +-
+ App.tsx                                    |   5 +-
+ design/project/Helferansicht Mobil.dc.html | 304 +++++++++++
+ src/components/Header.tsx                  |  23 +-
+ src/features/helfer/HelferScreen.tsx       | 563 ++++++++++++++++-----
+ src/shared/format/schedule.ts              |  10 +
+ src/shared/theme/colors.ts                 |   3 +
+ 7 files changed, 805 insertions(+), 146 deletions(-)
+ create mode 100644 design/project/Helferansicht Mobil.dc.html
+
+diff --git a/AGENTS.md b/AGENTS.md
+index b6fb0b5..9448b7c 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -44,9 +44,10 @@ sich geändert:
+   durchspringen. `App.tsx` liest den Parameter einmalig beim Start
+   (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
+   `HelferScreen` durch. Web-only (kein `window.location` auf nativ). Über
+-  einen Share-Link ist der Admin-Tab im Header ausgeblendet
+-  (`Header`-Prop `showAdminTab`), damit die geteilte Ansicht sich nicht wie
+-  ein Admin-Tool präsentiert.
++  einen Share-Link rendert `App.tsx` den äußeren `Header` gar nicht erst —
++  `HelferScreen` hat seit dem Mobil-Redesign (siehe unten) ihre eigene
++  Titel-/Event-Auswahl-Zeile, der äußere "Schichtplaner"-Header wäre dort
++  nur redundantes Chrome auf kostbarem Handy-Bildschirmplatz.
+ - Jede eingeloggte Person gilt als Admin — es gibt keine separate
+   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
+   gewähren Schreibzugriff an jede `authenticated`-Session.
+@@ -71,6 +72,42 @@ hinaus laufen (Tag-Ende in der Toolbar entsprechend spät setzen, z. B.
+ `resolveMin`/`spansMidnight`) rendert die Schicht dann automatisch korrekt
+ in die verlängerte Spalte hinein.
+ 
++## Helfer-Ansicht — Mobil-Redesign
++
++`HelferScreen.tsx` wurde komplett aus dem Claude-Design-Handoff
++`design/project/Helferansicht Mobil.dc.html` umgesetzt (gleiches
++`support.js` wie das ursprüngliche Design, siehe HANDOFF-README.md).
++Zentrale Punkte, falls das Design nochmal angepasst/nachimportiert wird:
++
++- **"Wer bist du?"**-Flow ersetzt den alten Namensfilter komplett: großer
++  Auswahl-Button → Panel mit Suche + Namensliste (nur Namen, die in
++  diesem Event tatsächlich irgendwo zugewiesen sind, nicht der ganze
++  Helfer-Pool) + Option, einen nicht gelisteten Namen frei zu verwenden.
++  Nach Auswahl: Pill "Du bist **Name**" + Toggle "Nur meine Schichten
++  zeigen" (gruppiert dann nach Tag, blendet die Tag-Tabs aus).
++- **Tag-Tabs** (sticky beim Scrollen) ersetzen die lange
++  Alle-Tage-Scrollliste — `formatDayTabParts()` in `schedule.ts` liefert
++  Wochentag/Datum getrennt fürs zweizeilige Tab-Label.
++- **Zugewiesene Helfer als Chips**, eigener Name wird an den Anfang
++  sortiert und farblich hervorgehoben; ab 4 Helfern eingeklappt mit
++  "+N weitere"-Toggle statt endlosem Umbruch.
++- **"Deine Schicht"**-Karten: grüner Akzent-Tint (`colors.accentBg`,
++  vorberechnete ~10 %-Mischung — das Design nutzt `color-mix()`, das hat
++  aber keine native iOS/Android-Entsprechung), dickerer linker Rand,
++  Badge oben rechts. Unbesetzte Schichten kriegen stattdessen einen
++  roten linken Rand plus Badge.
++- **PDF-Export** ist bewusst ein unauffälliger Text-Link im Footer statt
++  ein Button — auf dem Handy ein Nebenfeature.
++- Layout ist eine auf 430px begrenzte, zentrierte Spalte (`page`-Style) —
++  sieht auch auf Desktop-Breite bewusst wie eine schmale
++  Handy-optimierte Seite aus, kein separates Desktop-Layout.
++- **Ebenen-Falle**: Jede `position:'absolute'`-Overlay-Fläche (Picker-
++  Panel, Event-Dropdown) braucht auf ihrem eigenen Eltern-Container ein
++  `zIndex`, das höher ist als das aller nachfolgenden Geschwister-Views
++  mit eigenem `zIndex` (z. B. die sticky Tag-Tabs-Leiste) — sonst
++  rendert das Overlay dahinter statt darüber. In dieser Datei:
++  `whoBox`-zIndex muss über dem der `dayTabsBar` liegen.
++
+ ## Datenzugriff
+ 
+ - `src/shared/data/api.ts` ist die einzige Stelle, die UI-Code für
+diff --git a/App.tsx b/App.tsx
+index c34ce02..abfaf68 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -19,7 +19,10 @@ export default function App() {
+   return (
+     <AuthProvider>
+       <SafeAreaView style={styles.container}>
+-        <Header mode={mode} onModeChange={setMode} showAdminTab={!sharedEventId} />
++        {/* The shared Helfer link's own mobile-optimized screen has its own
++            title + event picker — the outer app chrome would just be a
++            second, redundant header eating into precious phone screen space. */}
++        {!sharedEventId && <Header mode={mode} onModeChange={setMode} />}
+         {mode === 'admin' ? <AdminGate /> : <HelferScreen initialEventId={sharedEventId} />}
+         <StatusBar style="auto" />
+       </SafeAreaView>
+diff --git a/design/project/Helferansicht Mobil.dc.html b/design/project/Helferansicht Mobil.dc.html
+new file mode 100644
+index 0000000..e98d3aa
+--- /dev/null
++++ b/design/project/Helferansicht Mobil.dc.html	
+@@ -0,0 +1,304 @@
++<!DOCTYPE html>
++<html>
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1">
++<script src="./support.js"></script>
++</head>
++<body>
++<x-dc>
++<helmet>
++<style>
++  body{margin:0;background:#F5F7F3;-webkit-tap-highlight-color:transparent;}
++  *{box-sizing:border-box;}
++</style>
++</helmet>
++<div style="{{ pageStyle }}">
++
++  <div style="{{ headerRowStyle }}">
++    <div style="{{ titleStyle }}">Schichtplan</div>
++    <select style="{{ eventSelectStyle }}" value="{{ selectedEvent }}" onChange="{{ onEventChange }}">
++      <sc-for list="{{ events }}" as="ev" hint-placeholder-count="2">
++        <option value="{{ ev.label }}">{{ ev.label }}</option>
++      </sc-for>
++    </select>
++  </div>
++
++  <div style="{{ whoBoxStyle }}">
++    <sc-if value="{{ !selectedName }}" hint-placeholder-val="{{ true }}">
++      <button style="{{ whoButtonStyle }}" onClick="{{ openPicker }}">
++        <span style="{{ whoButtonTitleStyle }}">Wer bist du?</span>
++        <span style="{{ whoButtonSubStyle }}">Namen wählen, um deine Schichten hervorzuheben</span>
++      </button>
++    </sc-if>
++    <sc-if value="{{ !!selectedName }}" hint-placeholder-val="{{ false }}">
++      <div style="{{ selectedRowStyle }}">
++        <div style="{{ selectedPillStyle }}">
++          <span style="{{ selectedDotStyle }}"></span>
++          <span>Du bist <b>{{ selectedName }}</b></span>
++        </div>
++        <button style="{{ changeLinkStyle }}" onClick="{{ openPicker }}">ändern</button>
++      </div>
++      <button style="{{ onlyMineToggleStyle }}" onClick="{{ toggleOnlyMine }}">
++        <span style="{{ onlyMineDotStyle }}"></span>
++        Nur meine Schichten zeigen
++      </button>
++    </sc-if>
++
++    <sc-if value="{{ pickerOpen }}" hint-placeholder-val="{{ false }}">
++      <div style="{{ pickerPanelStyle }}">
++        <input style="{{ pickerInputStyle }}" placeholder="Namen suchen oder eingeben…" value="{{ searchQuery }}" onChange="{{ onSearchChange }}" autoFocus="{{ true }}"></input>
++        <div style="{{ pickerListStyle }}">
++          <sc-for list="{{ filteredNames }}" as="n" hint-placeholder-count="4">
++            <button style="{{ n.rowStyle }}" onClick="{{ n.onPick }}">{{ n.name }}</button>
++          </sc-for>
++          <sc-if value="{{ showUseTyped }}" hint-placeholder-val="{{ false }}">
++            <button style="{{ useTypedRowStyle }}" onClick="{{ useTypedName }}">„{{ searchQuery }}" verwenden</button>
++          </sc-if>
++        </div>
++        <button style="{{ pickerCloseStyle }}" onClick="{{ closePicker }}">Abbrechen</button>
++      </div>
++    </sc-if>
++  </div>
++
++  <sc-if value="{{ !onlyMine }}" hint-placeholder-val="{{ true }}">
++    <div style="{{ dayTabsBarStyle }}">
++      <div style="{{ dayTabsRowStyle }}">
++        <sc-for list="{{ days }}" as="day" hint-placeholder-count="2">
++          <button style="{{ day.tabStyle }}" onClick="{{ day.onSelect }}">
++            <span style="{{ day.tabLabelStyle }}">{{ day.label }}</span>
++            <span style="{{ day.tabDateStyle }}">{{ day.dateLabel }}</span>
++          </button>
++        </sc-for>
++      </div>
++    </div>
++  </sc-if>
++
++  <div style="{{ listStyle }}">
++    <sc-if value="{{ emptyMine }}" hint-placeholder-val="{{ false }}">
++      <div style="{{ emptyMineStyle }}">Keine eigenen Schichten in diesem Zeitraum.</div>
++    </sc-if>
++    <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="1">
++      <sc-if value="{{ sec.showHeader }}" hint-placeholder-val="{{ false }}">
++        <div style="{{ sec.headerStyle }}">{{ sec.headerLabel }}</div>
++      </sc-if>
++      <sc-for list="{{ sec.shifts }}" as="shift" hint-placeholder-count="3">
++        <div style="{{ shift.cardStyle }}">
++        <sc-if value="{{ shift.isMine }}" hint-placeholder-val="{{ false }}">
++          <div style="{{ shift.mineBadgeStyle }}">Deine Schicht</div>
++        </sc-if>
++        <div style="{{ shift.topRowStyle }}">
++          <div style="{{ shift.timeStyle }}">{{ shift.time }}</div>
++          <sc-if value="{{ shift.unbesetzt }}" hint-placeholder-val="{{ false }}">
++            <div style="{{ shift.unbesetztBadgeStyle }}">Unbesetzt</div>
++          </sc-if>
++        </div>
++        <div style="{{ shift.titleStyle }}">{{ shift.title }}</div>
++        <div style="{{ shift.metaStyle }}">
++          {{ shift.category }}
++          <sc-if value="{{ shift.desc }}" hint-placeholder-val="{{ false }}">
++            <span> · {{ shift.desc }}</span>
++          </sc-if>
++        </div>
++        <sc-if value="{{ !shift.unbesetzt }}" hint-placeholder-val="{{ true }}">
++          <div style="{{ shift.chipsRowStyle }}">
++            <sc-for list="{{ shift.visibleHelpers }}" as="h" hint-placeholder-count="2">
++              <div style="{{ h.chipStyle }}">{{ h.name }}</div>
++            </sc-for>
++            <sc-if value="{{ shift.hasMore }}" hint-placeholder-val="{{ false }}">
++              <button style="{{ shift.moreChipStyle }}" onClick="{{ shift.toggleExpand }}">{{ shift.moreLabel }}</button>
++            </sc-if>
++          </div>
++        </sc-if>
++      </div>
++      </sc-for>
++    </sc-for>
++  </div>
++
++  <div style="{{ footerStyle }}">
++    <button style="{{ pdfButtonStyle }}" onClick="{{ noop }}">Gesamten Plan als PDF exportieren</button>
++  </div>
++
++</div>
++
++</x-dc>
++<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:412,&quot;height&quot;:900},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#3E9C5C&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#3E9C5C&quot;,&quot;#3E7C9C&quot;,&quot;#9C7C3E&quot;],&quot;section&quot;:&quot;Farben&quot;},&quot;warnColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#B85B3E&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#B85B3E&quot;,&quot;#B83E5B&quot;,&quot;#8C4E3E&quot;],&quot;section&quot;:&quot;Farben&quot;},&quot;denseCards&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
++const INK = '#26281F', SUB = '#6C7063', CARD = '#FCFDFB', BG = '#F5F7F3';
++const BORDER = '#DEE2D9', BORDER_STRONG = '#CCD1C5', CHIP_BG = '#E9ECE4';
++const FONT = "-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif";
++
++const RAW_DAYS = [
++  { id: 'fr', label: 'Fr', dateLabel: '28. Aug', shifts: [
++    { id: 's1', time: '15:00–16:00', title: 'Zapfen beim Antreten', category: 'Zapfen', desc: 'Bargeld kassieren (noch keine Wertmarken werden verkauft)', helpers: ['Gudrun Kranich','Barbara Flügge'] },
++    { id: 's2', time: '16:30–19:30', title: 'Zapfen beim Vogelschießen', category: 'Zapfen', desc: '2 drinnen, 5 draußen. Eingeteilte Vorstandsmitglieder kommen nach der Schützenmesse nach und gehen vor Einmarsch in die Halle sofort zu den Theken. Während des Zapfenstreichs Schichtwechsel', helpers: ['Simone Danne','Gudrun Kranich','Barbara Flügge','Nick Lange','Leopold Schulte','Tom Vornweg','Maxi Schulte','Stefanie Danne'] },
++    { id: 's3', time: '16:30–21:00', title: 'Wertmarkenverkauf im Kartenhäuschen', category: 'Wertmarkenverkauf', desc: '', helpers: ['Miriam Sdunek','Kathrin Fehling'] },
++    { id: 's4', time: '16:30–20:00', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Anja Vormweg','Dagmar Kaim','Jenny Brinkschulte','Evelyn Rüther'] },
++    { id: 's5', time: '19:30–23:00', title: 'Zapfen', category: 'Zapfen', desc: '4 drinnen, 5 draußen - mit dem Zapfenstreich Schichtwechsel', helpers: ['Benedikt Sauer','Berthold Schleicher','Georg Bücher','Meinolf Lehmann','Reinold Schulte','Stefan König','Frank Danne','Franz-Josef Schauerte','Markus Danne','Olaf Baumeister'] },
++    { id: 's6', time: '20:00–00:30', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Emily Danne','Viktoria Nagel','Saskia Flügge','Louisa Flügge','Lara Danne','Marlene Kranich'] },
++    { id: 's7', time: '21:00–02:00', title: 'Wertmarkenverkauf im Kartenhäuschen', category: 'Wertmarkenverkauf', desc: '', helpers: ['Birgit Baumeister','Cornelia Flügge'] },
++    { id: 's8', time: '23:00–02:00', title: 'Zapfen bis zum Ende', category: 'Zapfen', desc: 'Irgendwann kann entschieden werden, den Wagen draußen zu schließen. Dann nur noch Verkauf an den Theken innen.', helpers: ['Michael Rettler','Nils Prothmann','René Zweimann','Yannik Danne','Adrian Kranich','Alex Flügge','Max Flügge','Steffen Danne'] },
++  ]},
++  { id: 'sa', label: 'Sa', dateLabel: '29. Aug', shifts: [
++    { id: 's9', time: '09:00–12:30', title: 'Aufräumen & Aufbau in der Halle', category: 'Aufräumen', desc: 'Aufräumen der Theke, Fegen der Halle, Aufräumen des Vorplatzes. Stellen der Bänke für den Frühschoppen.', helpers: ['Yannik Danne','Steffen Danne','René Zweimann','Simon Danne'] },
++    { id: 's10', time: '12:30–15:00', title: 'Kellnerdienst Frühschoppen', category: 'Kellnern', desc: '', helpers: ['Anja Vormweg','Dagmar Kaim'] },
++    { id: 's11', time: '15:00–18:00', title: 'Zapfen', category: 'Zapfen', desc: '', helpers: [] },
++    { id: 's12', time: '18:00–22:00', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Emily Danne','Lara Danne','Marlene Kranich'] },
++  ]},
++];
++
++const ALL_NAMES = Array.from(new Set(RAW_DAYS.flatMap(d => d.shifts.flatMap(s => s.helpers)))).sort();
++
++class Component extends DCLogic {
++  state = {
++    selectedEvent: 'Jubelfest Hövel 2026',
++    selectedName: null,
++    pickerOpen: false,
++    searchQuery: '',
++    onlyMine: false,
++    activeDayId: 'fr',
++    expanded: {},
++  };
++
++  openPicker = () => this.setState({ pickerOpen: true, searchQuery: '' });
++  closePicker = () => this.setState({ pickerOpen: false });
++  pickName = (name) => this.setState({ selectedName: name, pickerOpen: false, searchQuery: '' });
++  useTypedName = () => { if (this.state.searchQuery.trim()) this.pickName(this.state.searchQuery.trim()); };
++  onSearchChange = (e) => this.setState({ searchQuery: e.target.value });
++  onEventChange = (e) => this.setState({ selectedEvent: e.target.value });
++  toggleOnlyMine = () => this.setState(s => ({ onlyMine: !s.onlyMine }));
++  selectDay = (id) => this.setState({ activeDayId: id });
++  toggleExpand = (shiftId) => this.setState(s => ({ expanded: { ...s.expanded, [shiftId]: !s.expanded[shiftId] } }));
++  noop = () => {};
++
++  renderVals() {
++    const accent = this.props.accentColor ?? '#3E9C5C';
++    const warn = this.props.warnColor ?? '#B85B3E';
++    const dense = this.props.denseCards ?? false;
++    const { selectedName, pickerOpen, searchQuery, onlyMine, activeDayId, expanded } = this.state;
++
++    const pageStyle = { maxWidth: 430, margin: '0 auto', minHeight: '100vh', background: BG, fontFamily: FONT, color: INK, paddingBottom: 32 };
++    const headerRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '18px 16px 6px' };
++    const titleStyle = { fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' };
++    const eventSelectStyle = { fontSize: 14, fontWeight: 600, color: SUB, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '8px 10px', maxWidth: 170 };
++
++    const whoBoxStyle = { padding: '10px 16px 0', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' };
++
++    const whoButtonStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, width: '100%', textAlign: 'left', background: accent, color: '#FFFFFF', border: 'none', borderRadius: 16, padding: '16px 18px', minHeight: 44, cursor: 'pointer' };
++    const whoButtonTitleStyle = { fontSize: 19, fontWeight: 700 };
++    const whoButtonSubStyle = { fontSize: 13, opacity: 0.9, fontWeight: 500 };
++
++    const selectedRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 };
++    const selectedPillStyle = { display: 'flex', alignItems: 'center', gap: 8, background: CARD, border: `1px solid ${BORDER_STRONG}`, borderRadius: 14, padding: '12px 16px', fontSize: 16, flex: 1, minHeight: 44 };
++    const selectedDotStyle = { width: 10, height: 10, borderRadius: '50%', background: accent, flexShrink: 0 };
++    const changeLinkStyle = { fontSize: 14, fontWeight: 600, color: accent, background: 'none', border: 'none', padding: '10px 6px', cursor: 'pointer', minHeight: 44 };
++
++    const onlyMineToggleStyle = {
++      display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: 44,
++      background: onlyMine ? accent : CARD, color: onlyMine ? '#FFFFFF' : INK,
++      border: `1px solid ${onlyMine ? accent : BORDER_STRONG}`, borderRadius: 14, padding: '11px 16px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
++    };
++    const onlyMineDotStyle = { width: 18, height: 18, borderRadius: 6, border: `2px solid ${onlyMine ? '#FFFFFF' : BORDER_STRONG}`, background: onlyMine ? '#FFFFFF' : 'transparent', flexShrink: 0, position: 'relative' };
++
++    const pickerPanelStyle = { position: 'absolute', top: '100%', left: 16, right: 16, marginTop: 6, background: CARD, border: `1px solid ${BORDER_STRONG}`, borderRadius: 16, boxShadow: '0 8px 24px rgba(38,40,31,0.18)', padding: 12, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380 };
++    const pickerInputStyle = { fontSize: 16, padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: BG, minHeight: 44 };
++    const pickerListStyle = { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260 };
++    const useTypedRowStyle = { textAlign: 'left', fontSize: 15, padding: '12px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: accent, fontWeight: 600, cursor: 'pointer', minHeight: 44 };
++    const pickerCloseStyle = { fontSize: 14, color: SUB, background: 'none', border: 'none', padding: '8px 4px', cursor: 'pointer', textAlign: 'center' };
++
++    const q = searchQuery.trim().toLowerCase();
++    const matches = ALL_NAMES.filter(n => n.toLowerCase().includes(q));
++    const filteredNames = matches.map(n => ({
++      name: n,
++      onPick: () => this.pickName(n),
++      rowStyle: { textAlign: 'left', fontSize: 16, padding: '12px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: INK, cursor: 'pointer', minHeight: 44 },
++    }));
++    const showUseTyped = q.length > 0 && !matches.some(n => n.toLowerCase() === q);
++
++    const days = RAW_DAYS.map(d => {
++      const active = d.id === activeDayId;
++      return {
++        id: d.id, label: d.label, dateLabel: d.dateLabel,
++        onSelect: () => this.selectDay(d.id),
++        tabStyle: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: 1, minHeight: 44, padding: '8px 4px', borderRadius: 12, border: 'none', cursor: 'pointer', background: active ? accent : 'transparent', color: active ? '#FFFFFF' : INK },
++        tabLabelStyle: { fontSize: 15, fontWeight: 700 },
++        tabDateStyle: { fontSize: 12, fontWeight: 500, opacity: active ? 0.9 : 0.65 },
++      };
++    });
++
++    const cardPad = dense ? '12px 14px' : '16px 16px';
++
++    const buildShift = (s) => {
++      const isMine = !!selectedName && s.helpers.includes(selectedName);
++      const isExpanded = !!expanded[s.id];
++      const orderedHelpers = isMine ? [selectedName, ...s.helpers.filter(h => h !== selectedName)] : s.helpers;
++      const visible = isExpanded ? orderedHelpers : orderedHelpers.slice(0, 4);
++      const hasMore = !isExpanded && orderedHelpers.length > 4;
++      const extra = orderedHelpers.length - 4;
++      return {
++        id: s.id, time: s.time, title: s.title, category: s.category, desc: s.desc,
++        unbesetzt: s.helpers.length === 0, isMine, hasMore,
++        moreLabel: `+${extra} weitere`,
++        toggleExpand: () => this.toggleExpand(s.id),
++        cardStyle: {
++          position: 'relative', background: isMine ? 'color-mix(in oklab, ' + accent + ' 10%, ' + CARD + ')' : CARD,
++          border: `1px solid ${isMine ? accent : BORDER}`, borderRadius: 16, padding: cardPad, marginBottom: 10,
++          borderLeft: isMine ? `4px solid ${accent}` : (s.helpers.length === 0 ? `4px solid ${warn}` : `1px solid ${BORDER}`),
++        },
++        mineBadgeStyle: { position: 'absolute', top: 12, right: 14, fontSize: 11, fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.03em' },
++        topRowStyle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
++        timeStyle: { fontSize: 15, fontWeight: 700, color: SUB, fontVariantNumeric: 'tabular-nums' },
++        unbesetztBadgeStyle: { fontSize: 12, fontWeight: 700, color: '#FFFFFF', background: warn, borderRadius: 8, padding: '4px 10px', textTransform: 'uppercase', letterSpacing: '0.02em' },
++        titleStyle: { fontSize: 18, fontWeight: 700, lineHeight: 1.25, marginBottom: 2, paddingRight: isMine ? 90 : 0 },
++        metaStyle: { fontSize: 14, color: SUB, lineHeight: 1.4, marginBottom: s.helpers.length ? 10 : 0 },
++        chipsRowStyle: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
++        visibleHelpers: visible.map(name => ({
++          name,
++          chipStyle: {
++            fontSize: 14, fontWeight: name === selectedName ? 700 : 500, padding: '7px 12px', borderRadius: 20,
++            background: name === selectedName ? accent : CHIP_BG, color: name === selectedName ? '#FFFFFF' : INK,
++          },
++        })),
++        moreChipStyle: { fontSize: 14, fontWeight: 600, padding: '7px 12px', borderRadius: 20, background: 'transparent', color: SUB, border: `1px dashed ${BORDER_STRONG}`, cursor: 'pointer', minHeight: 32 },
++      };
++    };
++
++    let sections, emptyMine = false;
++    if (onlyMine && selectedName) {
++      sections = RAW_DAYS.map(d => ({
++        day: d, shifts: d.shifts.filter(s => s.helpers.includes(selectedName)).map(buildShift),
++      })).filter(sec => sec.shifts.length > 0).map(sec => ({
++        shifts: sec.shifts, showHeader: true,
++        headerLabel: `${sec.day.label}., ${sec.day.dateLabel}`,
++        headerStyle: { fontSize: 13, fontWeight: 700, color: SUB, textTransform: 'uppercase', letterSpacing: '0.04em', margin: '18px 2px 8px' },
++      }));
++      emptyMine = sections.length === 0;
++    } else {
++      const rawActive = RAW_DAYS.find(d => d.id === activeDayId) || RAW_DAYS[0];
++      sections = [{ shifts: rawActive.shifts.map(buildShift), showHeader: false, headerLabel: '', headerStyle: {} }];
++    }
++
++    return {
++      pageStyle, headerRowStyle, titleStyle, eventSelectStyle,
++      events: [{ label: 'Jubelfest Hövel 2026' }, { label: 'Schützenfest Musterdorf 2025' }],
++      selectedEvent: this.state.selectedEvent, onEventChange: this.onEventChange,
++      whoBoxStyle, whoButtonStyle, whoButtonTitleStyle, whoButtonSubStyle, openPicker: this.openPicker,
++      selectedName, selectedRowStyle, selectedPillStyle, selectedDotStyle, changeLinkStyle,
++      onlyMineToggleStyle, onlyMineDotStyle, toggleOnlyMine: this.toggleOnlyMine,
++      pickerOpen, pickerPanelStyle, pickerInputStyle, pickerListStyle, useTypedRowStyle, pickerCloseStyle,
++      searchQuery, onSearchChange: this.onSearchChange, filteredNames, showUseTyped, useTypedName: this.useTypedName, closePicker: this.closePicker,
++      dayTabsBarStyle: { position: 'sticky', top: 0, zIndex: 20, background: BG, padding: '10px 16px', borderBottom: `1px solid ${BORDER}` },
++      dayTabsRowStyle: { display: 'flex', gap: 6, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 4 },
++      days,
++      listStyle: { padding: '14px 16px 0' },
++      emptyMineStyle: { textAlign: 'center', color: SUB, fontSize: 15, padding: '24px 0' },
++      sections, emptyMine, onlyMine,
++      footerStyle: { padding: '20px 16px 8px', textAlign: 'center' },
++      pdfButtonStyle: { fontSize: 13, color: SUB, background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', minHeight: 44 },
++      noop: this.noop,
++    };
++  }
++}
++
++</script>
++</body>
++</html>
+diff --git a/src/components/Header.tsx b/src/components/Header.tsx
+index 7b0a5dc..c91f54e 100644
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -4,27 +4,14 @@ import { colors } from '../shared/theme/colors';
+ 
+ export type Mode = 'admin' | 'helfer';
+ 
+-export function Header({
+-  mode,
+-  onModeChange,
+-  showAdminTab = true,
+-}: {
+-  mode: Mode;
+-  onModeChange: (m: Mode) => void;
+-  /** false for the passwordless shared Helfer link — no reason to surface the Admin login there. */
+-  showAdminTab?: boolean;
+-}) {
++export function Header({ mode, onModeChange }: { mode: Mode; onModeChange: (m: Mode) => void }) {
+   return (
+     <View style={styles.header}>
+       <Text style={styles.title}>Schichtplaner</Text>
+-      {showAdminTab ? (
+-        <View style={styles.tabs}>
+-          <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
+-          <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
+-        </View>
+-      ) : (
+-        <View />
+-      )}
++      <View style={styles.tabs}>
++        <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
++        <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
++      </View>
+       <View style={styles.spacer} />
+     </View>
+   );
+diff --git a/src/features/helfer/HelferScreen.tsx b/src/features/helfer/HelferScreen.tsx
+index 81ddc51..ddb6e79 100644
+--- a/src/features/helfer/HelferScreen.tsx
++++ b/src/features/helfer/HelferScreen.tsx
+@@ -1,23 +1,36 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
++import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+ import { Picker } from '../../components/Picker';
+-import { Button } from '../../components/Button';
+ import { api } from '../../shared/data/api';
+ import type { EventSummary, EventTag, Helper, Shift } from '../../shared/types';
+ import { colors } from '../../shared/theme/colors';
+-import { formatTime, groupShiftsByDay } from '../../shared/format/schedule';
++import { formatDayTabParts, formatTime, groupShiftsByDay } from '../../shared/format/schedule';
+ import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
+ 
++// Mobile-first redesign implemented from the Claude Design handoff at
++// design/project/Helferansicht Mobil.dc.html — see that file (and
++// AGENTS.md) for the source of the layout/interaction decisions below
++// (the "Wer bist du?" picker, sticky day tabs, own-shift highlighting,
++// chip overflow with "+N weitere").
++
++const VISIBLE_HELPER_LIMIT = 4;
++
+ export function HelferScreen({ initialEventId }: { initialEventId?: string | null }) {
+   const [events, setEvents] = useState<EventSummary[]>([]);
+   const [eventId, setEventId] = useState<string | null>(null);
+   const [tags, setTags] = useState<EventTag[]>([]);
+   const [shifts, setShifts] = useState<Shift[]>([]);
+   const [helpers, setHelpers] = useState<Helper[]>([]);
+-  const [nameFilter, setNameFilter] = useState('');
+   const [loading, setLoading] = useState(true);
+   const [exporting, setExporting] = useState(false);
+ 
++  const [selectedName, setSelectedName] = useState<string | null>(null);
++  const [pickerOpen, setPickerOpen] = useState(false);
++  const [searchQuery, setSearchQuery] = useState('');
++  const [onlyMine, setOnlyMine] = useState(false);
++  const [activeDayKey, setActiveDayKey] = useState<string | null>(null);
++  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
++
+   useEffect(() => {
+     api.listEvents().then((evs) => {
+       setEvents(evs);
+@@ -44,96 +57,267 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
+   const tagName = (id: string) => tags.find((t) => t.id === id)?.name ?? '';
+ 
+   const dayGroups = useMemo(() => groupShiftsByDay(shifts), [shifts]);
++  const activeDay = dayGroups.find((d) => d.key === activeDayKey) ?? dayGroups[0] ?? null;
++
++  // Only names actually working this event — no point offering the whole
++  // org-wide helper pool when picking "who are you" for one event.
++  const allNames = useMemo(() => {
++    const names = new Set<string>();
++    for (const s of shifts) for (const id of s.assignedHelperIds) names.add(helperName(id));
++    return Array.from(names).sort((a, b) => a.localeCompare(b, 'de'));
++  }, [shifts, helpers]);
++
++  const q = searchQuery.trim().toLowerCase();
++  const filteredNames = allNames.filter((n) => n.toLowerCase().includes(q));
++  const showUseTyped = q.length > 0 && !filteredNames.some((n) => n.toLowerCase() === q);
+ 
+-  const helperNameOptions = useMemo(() => {
+-    const names = Array.from(new Set(helpers.map((h) => h.name))).sort((a, b) => a.localeCompare(b, 'de'));
+-    return [{ value: '', label: '— Name wählen —' }, ...names.map((n) => ({ value: n, label: n }))];
+-  }, [helpers]);
++  function openPicker() {
++    setPickerOpen(true);
++    setSearchQuery('');
++  }
++  function closePicker() {
++    setPickerOpen(false);
++  }
++  function pickName(name: string) {
++    setSelectedName(name);
++    setPickerOpen(false);
++    setSearchQuery('');
++  }
++  function useTypedName() {
++    const typed = searchQuery.trim();
++    if (typed) pickName(typed);
++  }
++  function toggleOnlyMine() {
++    setOnlyMine((v) => !v);
++  }
++  function toggleExpand(shiftId: string) {
++    setExpanded((cur) => ({ ...cur, [shiftId]: !cur[shiftId] }));
++  }
+ 
+-  const isOwnHelper = (id: string) => {
+-    const filter = nameFilter.trim().toLowerCase();
+-    if (!filter) return false;
+-    return helperName(id).toLowerCase().includes(filter);
+-  };
+-  const isOwnShift = (shift: Shift) => shift.assignedHelperIds.some(isOwnHelper);
++  interface Section {
++    key: string;
++    showHeader: boolean;
++    headerLabel: string;
++    shifts: Shift[];
++  }
++
++  let sections: Section[];
++  let emptyMine = false;
++  if (onlyMine && selectedName) {
++    sections = dayGroups
++      .map((d) => ({
++        key: d.key,
++        showHeader: true,
++        headerLabel: d.label,
++        shifts: d.shifts.filter((s) => s.assignedHelperIds.some((id) => helperName(id) === selectedName)),
++      }))
++      .filter((sec) => sec.shifts.length > 0);
++    emptyMine = sections.length === 0;
++  } else {
++    sections = activeDay ? [{ key: activeDay.key, showHeader: false, headerLabel: '', shifts: activeDay.shifts }] : [];
++  }
++
++  async function handleExportPdf() {
++    if (!event) return;
++    setExporting(true);
++    try {
++      await exportSchedulePdf({ event, tags, shifts, helpers });
++    } finally {
++      setExporting(false);
++    }
++  }
+ 
+   return (
+     <View style={styles.container}>
+-      <View style={styles.controls}>
+-        <Picker
+-          value={eventId}
+-          options={events.map((e) => ({ value: e.id, label: e.name }))}
+-          onChange={setEventId}
+-        />
+-        <Picker
+-          value={helperNameOptions.some((o) => o.value === nameFilter) ? nameFilter : ''}
+-          options={helperNameOptions}
+-          onChange={setNameFilter}
+-        />
+-        <TextInput
+-          value={nameFilter}
+-          onChangeText={setNameFilter}
+-          placeholder="…oder Namen eingeben"
+-          style={styles.filterInput}
+-        />
+-        <Button
+-          label="Als PDF exportieren"
+-          disabled={!event || exporting}
+-          onPress={async () => {
+-            if (!event) return;
+-            setExporting(true);
+-            try {
+-              await exportSchedulePdf({ event, tags, shifts, helpers });
+-            } finally {
+-              setExporting(false);
+-            }
+-          }}
+-        />
+-      </View>
+-
+       {loading ? (
+         <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+       ) : (
+-        <FlatList
+-          contentContainerStyle={styles.list}
+-          data={dayGroups}
+-          keyExtractor={(d) => d.key}
+-          ListEmptyComponent={<Text style={styles.empty}>Keine Schichten gefunden.</Text>}
+-          renderItem={({ item: day }) => (
+-            <View style={styles.dayGroup}>
+-              <Text style={styles.dayLabel}>{day.label}</Text>
+-              {day.shifts.map((shift) => {
+-                const own = isOwnShift(shift);
+-                return (
+-                  <View key={shift.id} style={[styles.row, own && styles.rowOwn]}>
+-                    <Text style={styles.rowTime}>
+-                      {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
++        <ScrollView contentContainerStyle={styles.page}>
++          <View style={styles.headerRow}>
++            <Text style={styles.title}>Schichtplan</Text>
++            <Picker
++              value={eventId}
++              options={events.map((e) => ({ value: e.id, label: e.name }))}
++              onChange={setEventId}
++            />
++          </View>
++
++          <View style={styles.whoBox}>
++            {!selectedName ? (
++              <Pressable style={styles.whoButton} onPress={openPicker}>
++                <Text style={styles.whoButtonTitle}>Wer bist du?</Text>
++                <Text style={styles.whoButtonSub}>Namen wählen, um deine Schichten hervorzuheben</Text>
++              </Pressable>
++            ) : (
++              <>
++                <View style={styles.selectedRow}>
++                  <View style={styles.selectedPill}>
++                    <View style={styles.selectedDot} />
++                    <Text style={styles.selectedText}>
++                      Du bist <Text style={styles.selectedTextBold}>{selectedName}</Text>
+                     </Text>
+-                    <View style={styles.rowMain}>
+-                      <Text style={[styles.rowName, own && styles.rowNameOwn]}>{shift.name}</Text>
+-                      <Text style={styles.rowSub}>
+-                        {tagName(shift.tagId)} · {shift.description}
+-                      </Text>
+-                    </View>
+-                    <View style={styles.assignedWrap}>
+-                      {shift.assignedHelperIds.length ? (
+-                        shift.assignedHelperIds.map((id) => (
+-                          <View key={id} style={[styles.helperChip, isOwnHelper(id) && styles.helperChipOwn]}>
+-                            <Text style={[styles.helperChipLabel, isOwnHelper(id) && styles.helperChipLabelOwn]}>
+-                              {helperName(id)}
+-                            </Text>
+-                          </View>
+-                        ))
+-                      ) : (
+-                        <Text style={styles.unassignedLabel}>Unbesetzt</Text>
+-                      )}
+-                    </View>
+                   </View>
+-                );
+-              })}
++                  <Pressable onPress={openPicker} hitSlop={8}>
++                    <Text style={styles.changeLink}>ändern</Text>
++                  </Pressable>
++                </View>
++                <Pressable
++                  style={[styles.onlyMineToggle, onlyMine && styles.onlyMineToggleActive]}
++                  onPress={toggleOnlyMine}
++                >
++                  <View style={[styles.onlyMineDot, onlyMine && styles.onlyMineDotActive]} />
++                  <Text style={[styles.onlyMineLabel, onlyMine && styles.onlyMineLabelActive]}>
++                    Nur meine Schichten zeigen
++                  </Text>
++                </Pressable>
++              </>
++            )}
++
++            {pickerOpen && (
++              <View style={styles.pickerPanel}>
++                <TextInput
++                  value={searchQuery}
++                  onChangeText={setSearchQuery}
++                  placeholder="Namen suchen oder eingeben…"
++                  style={styles.pickerInput}
++                  autoFocus
++                />
++                <ScrollView style={styles.pickerList}>
++                  {filteredNames.map((n) => (
++                    <Pressable key={n} style={styles.pickerRow} onPress={() => pickName(n)}>
++                      <Text style={styles.pickerRowLabel}>{n}</Text>
++                    </Pressable>
++                  ))}
++                  {showUseTyped && (
++                    <Pressable style={styles.pickerRow} onPress={useTypedName}>
++                      <Text style={styles.useTypedLabel}>„{searchQuery}“ verwenden</Text>
++                    </Pressable>
++                  )}
++                </ScrollView>
++                <Pressable onPress={closePicker}>
++                  <Text style={styles.pickerClose}>Abbrechen</Text>
++                </Pressable>
++              </View>
++            )}
++          </View>
++
++          {!onlyMine && dayGroups.length > 0 && (
++            <View style={styles.dayTabsBar}>
++              <View style={styles.dayTabsRow}>
++                {dayGroups.map((d) => {
++                  const active = d.key === activeDay?.key;
++                  const { weekday, dateLabel } = formatDayTabParts(d.key);
++                  return (
++                    <Pressable
++                      key={d.key}
++                      style={[styles.dayTab, active && styles.dayTabActive]}
++                      onPress={() => setActiveDayKey(d.key)}
++                    >
++                      <Text style={[styles.dayTabLabel, active && styles.dayTabLabelActive]}>{weekday}</Text>
++                      <Text style={[styles.dayTabDate, active && styles.dayTabDateActive]}>{dateLabel}</Text>
++                    </Pressable>
++                  );
++                })}
++              </View>
+             </View>
+           )}
+-        />
++
++          <View style={styles.list}>
++            {emptyMine && <Text style={styles.emptyMine}>Keine eigenen Schichten in diesem Zeitraum.</Text>}
++            {sections.length === 0 && !emptyMine && (
++              <Text style={styles.emptyMine}>Keine Schichten gefunden.</Text>
++            )}
++            {sections.map((sec) => (
++              <View key={sec.key}>
++                {sec.showHeader && <Text style={styles.sectionHeader}>{sec.headerLabel}</Text>}
++                {sec.shifts.map((shift) => (
++                  <ShiftCard
++                    key={shift.id}
++                    shift={shift}
++                    tagName={tagName(shift.tagId)}
++                    helperName={helperName}
++                    selectedName={selectedName}
++                    expanded={!!expanded[shift.id]}
++                    onToggleExpand={() => toggleExpand(shift.id)}
++                  />
++                ))}
++              </View>
++            ))}
++          </View>
++
++          <View style={styles.footer}>
++            <Pressable onPress={handleExportPdf} disabled={!event || exporting} hitSlop={8}>
++              <Text style={[styles.pdfButton, (!event || exporting) && styles.pdfButtonDisabled]}>
++                Gesamten Plan als PDF exportieren
++              </Text>
++            </Pressable>
++          </View>
++        </ScrollView>
++      )}
++    </View>
++  );
++}
++
++function ShiftCard({
++  shift,
++  tagName,
++  helperName,
++  selectedName,
++  expanded,
++  onToggleExpand,
++}: {
++  shift: Shift;
++  tagName: string;
++  helperName: (id: string) => string;
++  selectedName: string | null;
++  expanded: boolean;
++  onToggleExpand: () => void;
++}) {
++  const names = shift.assignedHelperIds.map(helperName);
++  const unbesetzt = names.length === 0;
++  const isMine = !!selectedName && names.includes(selectedName);
++  const orderedNames = isMine ? [selectedName!, ...names.filter((n) => n !== selectedName)] : names;
++  const visible = expanded ? orderedNames : orderedNames.slice(0, VISIBLE_HELPER_LIMIT);
++  const hasMore = !expanded && orderedNames.length > VISIBLE_HELPER_LIMIT;
++  const extra = orderedNames.length - VISIBLE_HELPER_LIMIT;
++
++  return (
++    <View
++      style={[
++        styles.card,
++        isMine && styles.cardMine,
++        !isMine && unbesetzt && styles.cardUnbesetzt,
++      ]}
++    >
++      {isMine && <Text style={styles.mineBadge}>Deine Schicht</Text>}
++      <View style={styles.cardTopRow}>
++        <Text style={styles.cardTime}>
++          {formatTime(shift.startTime)}–{formatTime(shift.endTime)}
++        </Text>
++        {unbesetzt && (
++          <View style={styles.unbesetztBadge}>
++            <Text style={styles.unbesetztBadgeLabel}>Unbesetzt</Text>
++          </View>
++        )}
++      </View>
++      <Text style={[styles.cardTitle, isMine && styles.cardTitlePadded]}>{shift.name}</Text>
++      <Text style={styles.cardMeta}>
++        {tagName}
++        {shift.description ? ` · ${shift.description}` : ''}
++      </Text>
++      {!unbesetzt && (
++        <View style={styles.chipsRow}>
++          {visible.map((name) => (
++            <View key={name} style={[styles.chip, name === selectedName && styles.chipMine]}>
++              <Text style={[styles.chipLabel, name === selectedName && styles.chipLabelMine]}>{name}</Text>
++            </View>
++          ))}
++          {hasMore && (
++            <Pressable style={styles.moreChip} onPress={onToggleExpand}>
++              <Text style={styles.moreChipLabel}>+{extra} weitere</Text>
++            </Pressable>
++          )}
++        </View>
+       )}
+     </View>
+   );
+@@ -141,68 +325,199 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
+ 
+ const styles = StyleSheet.create({
+   container: { flex: 1, backgroundColor: colors.bg },
+-  controls: {
++  page: { maxWidth: 430, width: '100%', alignSelf: 'center', paddingBottom: 32 },
++
++  headerRow: {
+     flexDirection: 'row',
++    alignItems: 'center',
++    justifyContent: 'space-between',
+     gap: 12,
+     padding: 16,
+-    maxWidth: 760,
++    paddingTop: 18,
++    paddingBottom: 6,
++  },
++  title: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
++
++  whoBox: { paddingHorizontal: 16, paddingTop: 10, gap: 10, position: 'relative', zIndex: 25 },
++
++  whoButton: {
++    alignItems: 'flex-start',
++    gap: 4,
+     width: '100%',
+-    alignSelf: 'center',
+-    zIndex: 10,
++    backgroundColor: colors.accent,
++    borderRadius: 16,
++    padding: 18,
++    minHeight: 44,
++    justifyContent: 'center',
+   },
+-  filterInput: {
++  whoButtonTitle: { fontSize: 19, fontWeight: '700', color: colors.accentContrast },
++  whoButtonSub: { fontSize: 13, fontWeight: '500', color: colors.accentContrast, opacity: 0.9 },
++
++  selectedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
++  selectedPill: {
+     flex: 1,
+-    paddingHorizontal: 12,
+-    paddingVertical: 9,
+-    borderRadius: 8,
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 8,
++    backgroundColor: colors.surface,
++    borderWidth: 1,
++    borderColor: colors.borderStrong,
++    borderRadius: 14,
++    paddingVertical: 12,
++    paddingHorizontal: 16,
++    minHeight: 44,
++  },
++  selectedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
++  selectedText: { fontSize: 16, color: colors.textPrimary },
++  selectedTextBold: { fontWeight: '700' },
++  changeLink: { fontSize: 14, fontWeight: '600', color: colors.accent, paddingVertical: 10, paddingHorizontal: 6 },
++
++  onlyMineToggle: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 10,
++    width: '100%',
++    minHeight: 44,
++    backgroundColor: colors.surface,
++    borderWidth: 1,
++    borderColor: colors.borderStrong,
++    borderRadius: 14,
++    paddingVertical: 11,
++    paddingHorizontal: 16,
++  },
++  onlyMineToggleActive: { backgroundColor: colors.accent, borderColor: colors.accent },
++  onlyMineDot: { width: 18, height: 18, borderRadius: 6, borderWidth: 2, borderColor: colors.borderStrong },
++  onlyMineDotActive: { borderColor: colors.accentContrast, backgroundColor: colors.accentContrast },
++  onlyMineLabel: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
++  onlyMineLabelActive: { color: colors.accentContrast },
++
++  pickerPanel: {
++    position: 'absolute',
++    top: '100%',
++    left: 16,
++    right: 16,
++    marginTop: 6,
++    backgroundColor: colors.surface,
++    borderWidth: 1,
++    borderColor: colors.borderStrong,
++    borderRadius: 16,
++    padding: 12,
++    gap: 8,
++    maxHeight: 380,
++    zIndex: 30,
++    shadowColor: '#000',
++    shadowOpacity: 0.18,
++    shadowRadius: 12,
++    shadowOffset: { width: 0, height: 8 },
++    elevation: 6,
++  },
++  pickerInput: {
++    fontSize: 16,
++    paddingVertical: 12,
++    paddingHorizontal: 14,
++    borderRadius: 10,
+     borderWidth: 1,
+     borderColor: colors.border,
+-    fontSize: 14,
++    backgroundColor: colors.bg,
++    minHeight: 44,
++  },
++  pickerList: { maxHeight: 260 },
++  pickerRow: { paddingVertical: 12, paddingHorizontal: 10, borderRadius: 8, minHeight: 44, justifyContent: 'center' },
++  pickerRowLabel: { fontSize: 16, color: colors.textPrimary },
++  useTypedLabel: { fontSize: 15, fontWeight: '600', color: colors.accent },
++  pickerClose: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 },
++
++  dayTabsBar: {
++    position: 'sticky' as unknown as 'relative',
++    top: 0,
++    zIndex: 20,
++    backgroundColor: colors.bg,
++    paddingHorizontal: 16,
++    paddingVertical: 10,
++    borderBottomWidth: 1,
++    borderBottomColor: colors.border,
++  },
++  dayTabsRow: {
++    flexDirection: 'row',
++    gap: 6,
+     backgroundColor: colors.surface,
++    borderWidth: 1,
++    borderColor: colors.border,
++    borderRadius: 14,
++    padding: 4,
+   },
+-  list: { maxWidth: 760, width: '100%', alignSelf: 'center', paddingHorizontal: 20, paddingBottom: 60 },
+-  empty: { color: colors.textSecondary, textAlign: 'center', marginTop: 40 },
+-  dayGroup: { marginBottom: 22 },
+-  dayLabel: {
++  dayTab: { flex: 1, alignItems: 'center', gap: 2, minHeight: 44, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 12, justifyContent: 'center' },
++  dayTabActive: { backgroundColor: colors.accent },
++  dayTabLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
++  dayTabLabelActive: { color: colors.accentContrast },
++  dayTabDate: { fontSize: 12, fontWeight: '500', color: colors.textPrimary, opacity: 0.65 },
++  dayTabDateActive: { color: colors.accentContrast, opacity: 0.9 },
++
++  list: { paddingHorizontal: 16, paddingTop: 14 },
++  emptyMine: { textAlign: 'center', color: colors.textSecondary, fontSize: 15, paddingVertical: 24 },
++  sectionHeader: {
+     fontSize: 13,
+-    fontWeight: '600',
++    fontWeight: '700',
+     color: colors.textSecondary,
+     textTransform: 'uppercase',
+     letterSpacing: 0.4,
+-    marginBottom: 10,
++    marginTop: 18,
++    marginBottom: 8,
+   },
+-  row: {
+-    flexDirection: 'row',
+-    alignItems: 'flex-start',
+-    gap: 12,
++
++  card: {
++    position: 'relative',
+     backgroundColor: colors.surface,
+-    borderRadius: 10,
+     borderWidth: 1,
+     borderColor: colors.border,
+-    padding: 12,
+-    marginBottom: 8,
++    borderLeftWidth: 1,
++    borderLeftColor: colors.border,
++    borderRadius: 16,
++    padding: 16,
++    marginBottom: 10,
+   },
+-  rowOwn: { borderColor: colors.accent, backgroundColor: colors.tealBg },
+-  rowTime: { width: 96, fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+-  rowMain: { flex: 1, minWidth: 0 },
+-  rowName: { fontSize: 14.5, fontWeight: '600', color: colors.textPrimary },
+-  rowNameOwn: { color: colors.accent },
+-  rowSub: { fontSize: 12.5, color: colors.textSecondary, marginTop: 1 },
+-  assignedWrap: {
+-    flexDirection: 'row',
+-    flexWrap: 'wrap',
+-    justifyContent: 'flex-end',
+-    gap: 6,
+-    maxWidth: 280,
++  cardMine: {
++    backgroundColor: colors.accentBg,
++    borderColor: colors.accent,
++    borderLeftWidth: 4,
++    borderLeftColor: colors.accent,
+   },
+-  helperChip: {
+-    backgroundColor: colors.chipBg,
++  cardUnbesetzt: { borderLeftWidth: 4, borderLeftColor: colors.danger },
++  mineBadge: {
++    position: 'absolute',
++    top: 12,
++    right: 14,
++    fontSize: 11,
++    fontWeight: '700',
++    color: colors.accent,
++    textTransform: 'uppercase',
++    letterSpacing: 0.3,
++  },
++  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
++  cardTime: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
++  unbesetztBadge: { backgroundColor: colors.danger, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10 },
++  unbesetztBadgeLabel: { fontSize: 12, fontWeight: '700', color: colors.accentContrast, textTransform: 'uppercase', letterSpacing: 0.2 },
++  cardTitle: { fontSize: 18, fontWeight: '700', lineHeight: 23, color: colors.textPrimary, marginBottom: 2 },
++  cardTitlePadded: { paddingRight: 90 },
++  cardMeta: { fontSize: 14, color: colors.textSecondary, lineHeight: 19.6, marginBottom: 10 },
++  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
++  chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 20, backgroundColor: colors.chipBg },
++  chipMine: { backgroundColor: colors.accent },
++  chipLabel: { fontSize: 14, fontWeight: '500', color: colors.textPrimary },
++  chipLabelMine: { fontWeight: '700', color: colors.accentContrast },
++  moreChip: {
++    paddingVertical: 7,
++    paddingHorizontal: 12,
+     borderRadius: 20,
+-    paddingVertical: 4,
+-    paddingHorizontal: 11,
++    borderWidth: 1,
++    borderStyle: 'dashed',
++    borderColor: colors.borderStrong,
++    minHeight: 32,
++    justifyContent: 'center',
+   },
+-  helperChipOwn: { backgroundColor: colors.accent },
+-  helperChipLabel: { fontSize: 12.5, fontWeight: '600', color: colors.textPrimary },
+-  helperChipLabelOwn: { color: colors.accentContrast },
+-  unassignedLabel: { fontSize: 13, color: colors.danger, fontWeight: '500' },
++  moreChipLabel: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
++
++  footer: { padding: 20, paddingTop: 20, paddingBottom: 8, alignItems: 'center' },
++  pdfButton: { fontSize: 13, color: colors.textSecondary, textDecorationLine: 'underline', minHeight: 44, textAlignVertical: 'center' },
++  pdfButtonDisabled: { opacity: 0.5 },
+ });
+diff --git a/src/shared/format/schedule.ts b/src/shared/format/schedule.ts
+index 2f9e8e1..dadc865 100644
+--- a/src/shared/format/schedule.ts
++++ b/src/shared/format/schedule.ts
+@@ -16,6 +16,16 @@ export function formatDayLabel(iso: string): string {
+   return `${dayName}, ${dayNum}. ${monthStr}`;
+ }
+ 
++/** Short weekday + "DD. Mon" split into two parts, for compact day-tab UI
++ * (e.g. the mobile Helfer view) — {@link formatDayLabel} returns both
++ * joined as one string, which doesn't fit a two-line tab. */
++export function formatDayTabParts(iso: string): { weekday: string; dateLabel: string } {
++  const d = new Date(iso);
++  const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace('.', '');
++  const dateLabel = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short' }).format(d);
++  return { weekday, dateLabel };
++}
++
+ export function formatTime(iso: string): string {
+   const d = new Date(iso);
+   const formatter = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+diff --git a/src/shared/theme/colors.ts b/src/shared/theme/colors.ts
+index ebd6ade..a40daed 100644
+--- a/src/shared/theme/colors.ts
++++ b/src/shared/theme/colors.ts
+@@ -12,6 +12,9 @@ export const colors = {
+   textMuted: '#8A8E80',
+   accent: '#3E9C5C',
+   accentContrast: '#FFFFFF',
++  // Precomputed ~10% accent mixed into `surface` — used where the web design
++  // specifies `color-mix()`, which has no native (iOS/Android) equivalent.
++  accentBg: '#E9F3EB',
+   danger: '#B85B3E',
+   dangerBg: '#F3DCD3',
+   warn: '#B87A3E',
+-- 
+2.43.0
+

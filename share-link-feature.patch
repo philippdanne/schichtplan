@@ -1,0 +1,261 @@
+From 6276cecd63f1097ef7bb027ba273c5b591ef988b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 17:49:45 +0000
+Subject: [PATCH] Add passwordless share link for the Helfer view
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+New "An Helfer teilen" button in the Admin toolbar (web only) opens a
+modal with a direct link to the current event's read-only Helfer view
+— no login, no token/password, since the Helfer view was already
+login-free and read-only. The link is just the app's current URL with
+?event=<id> appended (src/shared/data/shareLink.ts), so it works
+unmodified under any deploy base path (e.g. GitHub Pages' /schichtplan/).
+
+App.tsx reads that query param once at load (getSharedEventId()),
+forces Helfer mode, and passes the event id down so HelferScreen
+pre-selects it instead of defaulting to the first event.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ AGENTS.md                                     |  7 +++
+ App.tsx                                       | 10 +++-
+ src/features/admin/AdminScreen.tsx            | 17 +++++-
+ .../admin/components/ShareLinkModal.tsx       | 60 +++++++++++++++++++
+ src/features/helfer/HelferScreen.tsx          |  6 +-
+ src/shared/data/shareLink.ts                  | 23 +++++++
+ 6 files changed, 117 insertions(+), 6 deletions(-)
+ create mode 100644 src/features/admin/components/ShareLinkModal.tsx
+ create mode 100644 src/shared/data/shareLink.ts
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 0dee0d0..763b3a1 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -37,6 +37,13 @@ sich geändert:
+   `src/features/admin/AdminGate.tsx`.
+ - **Helfer-Ansicht bleibt ohne Login** — rein lesend, kein Auth-Check, per
+   Design-Vorgabe.
++- **Share-Link** (`src/shared/data/shareLink.ts`): Admin-Button "An Helfer
++  teilen" hängt `?event=<id>` an die aktuelle URL. Da die Helfer-Ansicht
++  bereits login-frei und rein lesend ist, ist "passwortlos teilen" damit
++  bereits erfüllt — der Link muss nur direkt zum richtigen Event
++  durchspringen. `App.tsx` liest den Parameter einmalig beim Start
++  (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
++  `HelferScreen` durch. Web-only (kein `window.location` auf nativ).
+ - Jede eingeloggte Person gilt als Admin — es gibt keine separate
+   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
+   gewähren Schreibzugriff an jede `authenticated`-Session.
+diff --git a/App.tsx b/App.tsx
+index 380cf5e..d709112 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -6,15 +6,21 @@ import { AdminGate } from './src/features/admin/AdminGate';
+ import { HelferScreen } from './src/features/helfer/HelferScreen';
+ import { AuthProvider } from './src/shared/auth/AuthContext';
+ import { colors } from './src/shared/theme/colors';
++import { getSharedEventId } from './src/shared/data/shareLink';
++
++// A "share" link (see ShareLinkModal) is just this app's URL with
++// ?event=<id> appended — computed once at load, not re-read afterwards,
++// so switching to the Admin tab and back doesn't fight the user.
++const sharedEventId = getSharedEventId();
+ 
+ export default function App() {
+-  const [mode, setMode] = useState<Mode>('admin');
++  const [mode, setMode] = useState<Mode>(sharedEventId ? 'helfer' : 'admin');
+ 
+   return (
+     <AuthProvider>
+       <SafeAreaView style={styles.container}>
+         <Header mode={mode} onModeChange={setMode} />
+-        {mode === 'admin' ? <AdminGate /> : <HelferScreen />}
++        {mode === 'admin' ? <AdminGate /> : <HelferScreen initialEventId={sharedEventId} />}
+         <StatusBar style="auto" />
+       </SafeAreaView>
+     </AuthProvider>
+diff --git a/src/features/admin/AdminScreen.tsx b/src/features/admin/AdminScreen.tsx
+index 70eeb8f..208332c 100644
+--- a/src/features/admin/AdminScreen.tsx
++++ b/src/features/admin/AdminScreen.tsx
+@@ -1,5 +1,5 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
++import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+ import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+ import { Picker } from '../../components/Picker';
+ import { Button } from '../../components/Button';
+@@ -10,11 +10,13 @@ import { EventFormModal } from './components/EventFormModal';
+ import { HelperFormModal } from './components/HelperFormModal';
+ import { AblaufplanModal } from './components/AblaufplanModal';
+ import { TagsModal } from './components/TagsModal';
++import { ShareLinkModal } from './components/ShareLinkModal';
+ import { api } from '../../shared/data/api';
+ import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
+ import { colors } from '../../shared/theme/colors';
+ import { formatDayLabel, dateRange } from '../../shared/format/schedule';
+ import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
++import { buildShareLink } from '../../shared/data/shareLink';
+ import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
+ 
+ export function AdminScreen() {
+@@ -41,6 +43,7 @@ export function AdminScreen() {
+   const [tagsModalOpen, setTagsModalOpen] = useState(false);
+   const [daySettings, setDaySettings] = useState({ dayStart: '10:00', dayEnd: '00:00' });
+   const [exporting, setExporting] = useState(false);
++  const [shareModalOpen, setShareModalOpen] = useState(false);
+ 
+   useEffect(() => {
+     api.listEvents().then((evs) => {
+@@ -228,6 +231,9 @@ export function AdminScreen() {
+           />
+         </View>
+         <View style={{ flex: 1 }} />
++        {Platform.OS === 'web' && (
++          <Button label="An Helfer teilen" disabled={!event} onPress={() => setShareModalOpen(true)} />
++        )}
+         <Button
+           label="+ Neue Schicht"
+           variant="primary"
+@@ -346,6 +352,15 @@ export function AdminScreen() {
+           return created;
+         }}
+       />
++
++      {event && (
++        <ShareLinkModal
++          visible={shareModalOpen}
++          eventName={event.name}
++          link={buildShareLink(event.id)}
++          onClose={() => setShareModalOpen(false)}
++        />
++      )}
+     </View>
+   );
+ }
+diff --git a/src/features/admin/components/ShareLinkModal.tsx b/src/features/admin/components/ShareLinkModal.tsx
+new file mode 100644
+index 0000000..ec75736
+--- /dev/null
++++ b/src/features/admin/components/ShareLinkModal.tsx
+@@ -0,0 +1,60 @@
++import React, { useState } from 'react';
++import { StyleSheet, Text, TextInput, View } from 'react-native';
++import { Modal } from '../../../components/Modal';
++import { Button } from '../../../components/Button';
++import { colors } from '../../../shared/theme/colors';
++
++export function ShareLinkModal({
++  visible,
++  eventName,
++  link,
++  onClose,
++}: {
++  visible: boolean;
++  eventName: string;
++  link: string;
++  onClose: () => void;
++}) {
++  const [copied, setCopied] = useState(false);
++
++  async function handleCopy() {
++    try {
++      await navigator.clipboard.writeText(link);
++      setCopied(true);
++      setTimeout(() => setCopied(false), 2000);
++    } catch {
++      // Clipboard API can be blocked (permissions, non-HTTPS context) — the
++      // link is still shown in a selectable field below as a fallback.
++    }
++  }
++
++  return (
++    <Modal visible={visible} onClose={onClose} width={480}>
++      <Text style={styles.title}>An Helfer teilen – {eventName}</Text>
++      <Text style={styles.hint}>
++        Wer diesen Link öffnet, sieht den Schichtplan für dieses Event — ohne Anmeldung, nur lesend.
++      </Text>
++      <TextInput value={link} editable={false} selectTextOnFocus style={styles.linkInput} />
++      <View style={styles.footer}>
++        <Button label="Schließen" variant="secondary" onPress={onClose} />
++        <Button label={copied ? 'Kopiert ✓' : 'Link kopieren'} variant="primary" onPress={handleCopy} />
++      </View>
++    </Modal>
++  );
++}
++
++const styles = StyleSheet.create({
++  title: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: colors.textPrimary },
++  hint: { fontSize: 13, color: colors.textSecondary, marginBottom: 16, lineHeight: 18 },
++  linkInput: {
++    borderWidth: 1,
++    borderColor: colors.borderStrong,
++    borderRadius: 8,
++    paddingHorizontal: 10,
++    paddingVertical: 9,
++    fontSize: 13,
++    backgroundColor: colors.chipBg,
++    color: colors.textPrimary,
++  },
++  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
++});
+diff --git a/src/features/helfer/HelferScreen.tsx b/src/features/helfer/HelferScreen.tsx
+index eb9adb3..7dfddca 100644
+--- a/src/features/helfer/HelferScreen.tsx
++++ b/src/features/helfer/HelferScreen.tsx
+@@ -8,7 +8,7 @@ import { colors } from '../../shared/theme/colors';
+ import { formatTime, groupShiftsByDay } from '../../shared/format/schedule';
+ import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
+ 
+-export function HelferScreen() {
++export function HelferScreen({ initialEventId }: { initialEventId?: string | null }) {
+   const [events, setEvents] = useState<EventSummary[]>([]);
+   const [eventId, setEventId] = useState<string | null>(null);
+   const [tags, setTags] = useState<EventTag[]>([]);
+@@ -21,10 +21,10 @@ export function HelferScreen() {
+   useEffect(() => {
+     api.listEvents().then((evs) => {
+       setEvents(evs);
+-      setEventId((cur) => cur ?? evs[0]?.id ?? null);
++      setEventId((cur) => cur ?? initialEventId ?? evs[0]?.id ?? null);
+     });
+     api.listHelpers().then(setHelpers);
+-  }, []);
++  }, [initialEventId]);
+ 
+   useEffect(() => {
+     if (!eventId) return;
+diff --git a/src/shared/data/shareLink.ts b/src/shared/data/shareLink.ts
+new file mode 100644
+index 0000000..bcd29b1
+--- /dev/null
++++ b/src/shared/data/shareLink.ts
+@@ -0,0 +1,23 @@
++import { Platform } from 'react-native';
++
++const EVENT_PARAM = 'event';
++
++/**
++ * Web-only: the Helfer view is already login-free and read-only (see
++ * AGENTS.md), so "sharing" an event just means deep-linking straight into
++ * it — append the event id as a query param on the current URL (works
++ * unmodified under any base path, e.g. GitHub Pages' /schichtplan/) and
++ * force Helfer mode + that event on load (see App.tsx/HelferScreen.tsx).
++ */
++export function buildShareLink(eventId: string): string {
++  const url = new URL(window.location.href);
++  url.search = '';
++  url.hash = '';
++  url.searchParams.set(EVENT_PARAM, eventId);
++  return url.toString();
++}
++
++export function getSharedEventId(): string | null {
++  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
++  return new URLSearchParams(window.location.search).get(EVENT_PARAM);
++}
+-- 
+2.43.0
+

@@ -1,0 +1,280 @@
+From d803e6f7c8120f4cd5ff5f497f472ca41b599ca2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 17:59:46 +0000
+Subject: [PATCH 1/2] Allow shifts to cross midnight (e.g. 20:00-01:00)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ShiftFormModal blocked any end time not strictly after the start time,
+making late-night shifts impossible. End <= start now means "ends the
+next day" instead of being rejected — matches how the form's own hint
+text explains it.
+
+AdminScreen's save handler resolves the actual end date from that
+rule (new addDays() helper in schedule.ts) so the stored end_time is
+genuinely after start_time, satisfying the DB's shifts_time_order
+check constraint instead of violating it.
+
+Timeline's drag-to-create clamped against a hardcoded 0-1439 range and
+formatted minutes without wrapping, so dragging near the bottom of a
+day configured to extend past midnight couldn't produce a past-
+midnight end time. Now clamps against the day's own (possibly
+extended) dayEndMin and wraps the formatted clock time modulo 1440.
+
+Also fixed dateRange() converting through toISOString() (UTC) to build
+its date strings, which silently shifts dates back a day in any
+timezone ahead of UTC (local midnight in CEST is still 22:00 the
+previous day in UTC) -- it now reads the local calendar fields
+directly. This affected the day-tab dates and PDF export's date range.
+
+Verified live: created a 20:00-01:00 shift, confirmed via computed
+style that it renders at the correct pixel position/height (560px
+top, 280px height = exactly 5h at 56px/hour) spanning past midnight.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ src/features/admin/AdminScreen.tsx            |  7 +++++--
+ .../admin/components/ShiftFormModal.tsx       |  7 ++++++-
+ src/features/admin/components/Timeline.tsx    | 15 ++++++++++++---
+ src/shared/format/schedule.ts                 | 19 ++++++++++++++++++-
+ 4 files changed, 41 insertions(+), 7 deletions(-)
+
+diff --git a/src/features/admin/AdminScreen.tsx b/src/features/admin/AdminScreen.tsx
+index 208332c..38b33f5 100644
+--- a/src/features/admin/AdminScreen.tsx
++++ b/src/features/admin/AdminScreen.tsx
+@@ -14,7 +14,7 @@ import { ShareLinkModal } from './components/ShareLinkModal';
+ import { api } from '../../shared/data/api';
+ import { useDragDropEnabled } from '../../shared/platform/useDragDropEnabled';
+ import { colors } from '../../shared/theme/colors';
+-import { formatDayLabel, dateRange } from '../../shared/format/schedule';
++import { formatDayLabel, dateRange, addDays } from '../../shared/format/schedule';
+ import { exportSchedulePdf } from '../../shared/print/exportSchedulePdf';
+ import { buildShareLink } from '../../shared/data/shareLink';
+ import type { EventSummary, EventTag, Helper, RoleTag, Shift } from '../../shared/types';
+@@ -264,8 +264,11 @@ export function AdminScreen() {
+           // so .getTime() already yields the correct UTC instant — no manual
+           // offset math needed. toISOString() then serializes it
+           // unambiguously (with a "Z" suffix) for storage.
++          // An end time that's not after the start time (e.g. 20:00–01:00)
++          // means the shift crosses midnight — it belongs on the next day.
++          const endDate = value.end <= value.start ? addDays(currentDate, 1) : currentDate;
+           const startTime = new Date(`${currentDate}T${value.start}:00`).toISOString();
+-          const endTime = new Date(`${currentDate}T${value.end}:00`).toISOString();
++          const endTime = new Date(`${endDate}T${value.end}:00`).toISOString();
+           if (shiftModal.editing) {
+             const updated = await api.updateShift(shiftModal.editing.id, {
+               name: value.name,
+diff --git a/src/features/admin/components/ShiftFormModal.tsx b/src/features/admin/components/ShiftFormModal.tsx
+index ebf306c..f477969 100644
+--- a/src/features/admin/components/ShiftFormModal.tsx
++++ b/src/features/admin/components/ShiftFormModal.tsx
+@@ -62,7 +62,7 @@ export function ShiftFormModal({
+     if (!name.trim()) return setError('Name darf nicht leer sein.');
+     if (!tagId) return setError('Bitte eine Spalte wählen.');
+     if (!TIME_RE.test(start) || !TIME_RE.test(end)) return setError('Uhrzeit im Format HH:MM angeben.');
+-    if (start >= end) return setError('Ende muss nach dem Start liegen.');
++    if (start === end) return setError('Start und Ende dürfen nicht gleich sein.');
+     setSaving(true);
+     try {
+       await onSave({ name: name.trim(), description: description.trim(), tagId, start, end });
+@@ -96,6 +96,10 @@ export function ShiftFormModal({
+             </Field>
+           </View>
+         </View>
++        <Text style={styles.hint}>
++          Endet die Schicht nach Mitternacht? Einfach eine Uhrzeit vor dem Start eingeben (z. B. 20:00–01:00) — gilt
++          automatisch als nächster Tag.
++        </Text>
+         {error && <Text style={styles.error}>{error}</Text>}
+       </View>
+       <View style={styles.footer}>
+@@ -127,6 +131,7 @@ const styles = StyleSheet.create({
+     fontSize: 14,
+     backgroundColor: colors.surface,
+   },
++  hint: { fontSize: 12, color: colors.textSecondary, lineHeight: 16 },
+   error: { fontSize: 12.5, color: colors.danger },
+   footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 },
+ });
+diff --git a/src/features/admin/components/Timeline.tsx b/src/features/admin/components/Timeline.tsx
+index 61a50f6..8ca3d9f 100644
+--- a/src/features/admin/components/Timeline.tsx
++++ b/src/features/admin/components/Timeline.tsx
+@@ -112,10 +112,19 @@ export function Timeline(props: Props) {
+   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+ 
+   function handleColumnCreate(tagId: string, startMin: number, endMin: number) {
+-    const clamp = (m: number) => Math.max(0, Math.min(1439, m));
+-    const toHHMM = (m: number) => `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
++    // Clamp against the day's own (possibly midnight-spanning) extended
++    // range, not a hardcoded 0–1439, so dragging near the bottom of a day
++    // configured to run past midnight (e.g. dayEnd "02:00") can still
++    // produce an end time after 00:00. toHHMM wraps back into a plain
++    // clock time — the resulting end<=start pair reads as "next day" the
++    // same way a manually-typed 20:00–01:00 shift does (see AdminScreen).
++    const clamp = (m: number) => Math.max(0, Math.min(dayEndMin, m));
++    const toHHMM = (m: number) => {
++      const clock = ((m % 1440) + 1440) % 1440;
++      return `${Math.floor(clock / 60).toString().padStart(2, '0')}:${(clock % 60).toString().padStart(2, '0')}`;
++    };
+     const s = clamp(startMin);
+-    const e = clamp(endMin) <= s ? Math.min(1439, s + 60) : clamp(endMin);
++    const e = clamp(endMin) <= s ? Math.min(dayEndMin, s + 60) : clamp(endMin);
+     props.onCreateShift(tagId, toHHMM(s), toHHMM(e));
+   }
+ 
+diff --git a/src/shared/format/schedule.ts b/src/shared/format/schedule.ts
+index c847361..2f9e8e1 100644
+--- a/src/shared/format/schedule.ts
++++ b/src/shared/format/schedule.ts
+@@ -22,17 +22,34 @@ export function formatTime(iso: string): string {
+   return formatter.format(d);
+ }
+ 
++// cur.toISOString().slice(0, 10) would convert through UTC first, which
++// shifts the date back a day in any timezone ahead of UTC (e.g. local
++// midnight in CEST is still 22:00 the previous day in UTC) — read the
++// local calendar fields directly instead.
++function toDateStr(d: Date): string {
++  const y = d.getFullYear();
++  const m = (d.getMonth() + 1).toString().padStart(2, '0');
++  const day = d.getDate().toString().padStart(2, '0');
++  return `${y}-${m}-${day}`;
++}
++
+ export function dateRange(startDate: string, endDate: string): string[] {
+   const out: string[] = [];
+   const cur = new Date(startDate + 'T00:00:00');
+   const end = new Date(endDate + 'T00:00:00');
+   while (cur <= end) {
+-    out.push(cur.toISOString().slice(0, 10));
++    out.push(toDateStr(cur));
+     cur.setDate(cur.getDate() + 1);
+   }
+   return out;
+ }
+ 
++export function addDays(dateStr: string, days: number): string {
++  const d = new Date(dateStr + 'T00:00:00');
++  d.setDate(d.getDate() + days);
++  return toDateStr(d);
++}
++
+ export interface DayGroup {
+   key: string;
+   label: string;
+-- 
+2.43.0
+
+
+From 4168fdc7ed4e5d311441fa0cb2bf3ef01582acc0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 17:59:53 +0000
+Subject: [PATCH 2/2] Hide the Admin tab on the passwordless shared Helfer link
+
+The shared link (?event=<id>) already forces Helfer mode, but the
+header still showed an "Admin" tab next to it, presenting the shared
+page as an admin tool to helpers who shouldn't see that option.
+Header now takes a showAdminTab prop; App.tsx sets it to false
+whenever a shared event id is present in the URL.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ AGENTS.md                 | 18 +++++++++++++++++-
+ App.tsx                   |  2 +-
+ src/components/Header.tsx | 23 ++++++++++++++++++-----
+ 3 files changed, 36 insertions(+), 7 deletions(-)
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 763b3a1..b6fb0b5 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -43,7 +43,10 @@ sich geändert:
+   bereits erfüllt — der Link muss nur direkt zum richtigen Event
+   durchspringen. `App.tsx` liest den Parameter einmalig beim Start
+   (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
+-  `HelferScreen` durch. Web-only (kein `window.location` auf nativ).
++  `HelferScreen` durch. Web-only (kein `window.location` auf nativ). Über
++  einen Share-Link ist der Admin-Tab im Header ausgeblendet
++  (`Header`-Prop `showAdminTab`), damit die geteilte Ansicht sich nicht wie
++  ein Admin-Tool präsentiert.
+ - Jede eingeloggte Person gilt als Admin — es gibt keine separate
+   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
+   gewähren Schreibzugriff an jede `authenticated`-Session.
+@@ -55,6 +58,19 @@ sich geändert:
+   lokal ungeschützt mit Mock-Daten weiter (sichtbar als Banner) — es gibt
+   sonst keine Möglichkeit, lokal ohne Backend eine Session zu erzeugen.
+ 
++## Schichten über Mitternacht
++
++Eine Schicht darf über 00:00 hinausgehen (z. B. 20:00–01:00). Erkennung:
++Ende ≤ Start im Formular bedeutet "endet am nächsten Tag" — kein separates
++Datumsfeld nötig. `AdminScreen.tsx`s Save-Handler berechnet das Enddatum
++entsprechend (`addDays` aus `schedule.ts`); die DB-Check-Constraint
++(`end_time > start_time`) bleibt dadurch immer erfüllt. Damit eine solche
++Schicht in der Timeline sichtbar ist, muss der Tag selbst über Mitternacht
++hinaus laufen (Tag-Ende in der Toolbar entsprechend spät setzen, z. B.
++02:00) — die vorhandene Tag-Zeitspannen-Logik (`Timeline.tsx`,
++`resolveMin`/`spansMidnight`) rendert die Schicht dann automatisch korrekt
++in die verlängerte Spalte hinein.
++
+ ## Datenzugriff
+ 
+ - `src/shared/data/api.ts` ist die einzige Stelle, die UI-Code für
+diff --git a/App.tsx b/App.tsx
+index d709112..c34ce02 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -19,7 +19,7 @@ export default function App() {
+   return (
+     <AuthProvider>
+       <SafeAreaView style={styles.container}>
+-        <Header mode={mode} onModeChange={setMode} />
++        <Header mode={mode} onModeChange={setMode} showAdminTab={!sharedEventId} />
+         {mode === 'admin' ? <AdminGate /> : <HelferScreen initialEventId={sharedEventId} />}
+         <StatusBar style="auto" />
+       </SafeAreaView>
+diff --git a/src/components/Header.tsx b/src/components/Header.tsx
+index c91f54e..7b0a5dc 100644
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -4,14 +4,27 @@ import { colors } from '../shared/theme/colors';
+ 
+ export type Mode = 'admin' | 'helfer';
+ 
+-export function Header({ mode, onModeChange }: { mode: Mode; onModeChange: (m: Mode) => void }) {
++export function Header({
++  mode,
++  onModeChange,
++  showAdminTab = true,
++}: {
++  mode: Mode;
++  onModeChange: (m: Mode) => void;
++  /** false for the passwordless shared Helfer link — no reason to surface the Admin login there. */
++  showAdminTab?: boolean;
++}) {
+   return (
+     <View style={styles.header}>
+       <Text style={styles.title}>Schichtplaner</Text>
+-      <View style={styles.tabs}>
+-        <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
+-        <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
+-      </View>
++      {showAdminTab ? (
++        <View style={styles.tabs}>
++          <Tab label="Admin" active={mode === 'admin'} onPress={() => onModeChange('admin')} />
++          <Tab label="Helfer" active={mode === 'helfer'} onPress={() => onModeChange('helfer')} />
++        </View>
++      ) : (
++        <View />
++      )}
+       <View style={styles.spacer} />
+     </View>
+   );
+-- 
+2.43.0
+

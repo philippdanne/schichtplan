@@ -12,6 +12,9 @@ export const colors = {
   textMuted: '#8A8E80',
   accent: '#3E9C5C',
   accentContrast: '#FFFFFF',
+  // Precomputed ~10% accent mixed into `surface` — used where the web design
+  // specifies `color-mix()`, which has no native (iOS/Android) equivalent.
+  accentBg: '#E9F3EB',
   danger: '#B85B3E',
   dangerBg: '#F3DCD3',
   warn: '#B87A3E',

@@ -1,0 +1,53 @@
+From 0a952db68a27c4405f7c391ae7ba7695c84a2168 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 18:28:53 +0000
+Subject: [PATCH] Fix shift blocks shrinking to content height instead of
+ duration
+
+DroppableShiftBlock (the dnd-kit drop target used whenever drag&drop
+is active, i.e. web at tablet width and up -- the normal desktop admin
+experience) wraps the shift block in a plain <div style={{height:
+'100%'}}>. A plain div isn't a flex container, so the inner block
+View's `flex: 1` -- which is what's supposed to make it fill that
+100%-height wrapper instead of shrinking to its own text content --
+silently did nothing, since flex properties only take effect inside a
+flex container.
+
+The effect: every shift block rendered at roughly its own text content
+height (~1-1.5h worth of pixels) regardless of actual duration, most
+visible on longer shifts (e.g. a 14:00-17:30 shift rendering as if it
+were maybe an hour). Adding `display: 'flex'` to the wrapping div lets
+the child's flex: 1 take effect and correctly stretch to fill it.
+
+Verified live: same 14:00-17:30 shift now measures exactly 196px
+(3.5h x 56px/hour) between the 14:00 and 17:30 grid positions, instead
+of the previous ~76px it shrank to.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ src/features/admin/components/Timeline.tsx | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/features/admin/components/Timeline.tsx b/src/features/admin/components/Timeline.tsx
+index 8ca3d9f..2710f07 100644
+--- a/src/features/admin/components/Timeline.tsx
++++ b/src/features/admin/components/Timeline.tsx
+@@ -305,9 +305,12 @@ function DragCreateColumn({
+ function DroppableShiftBlock({ shiftId, children }: { shiftId: string; children: React.ReactNode }) {
+   const { setNodeRef, isOver } = useDroppable({ id: `shift:${shiftId}` });
+   // Plain DOM node for the same reason as DraggableHelperCard in
+-  // HelperPool.tsx — only rendered on web.
++  // HelperPool.tsx — only rendered on web. Needs `display: flex` — a plain
++  // div isn't a flex container, so the inner View's `flex: 1` (which is
++  // what makes it fill this wrapper's full height instead of shrinking to
++  // its text content) would otherwise silently do nothing.
+   return (
+-    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%' }}>
++    <div ref={setNodeRef} data-shift-block="true" style={{ height: '100%', display: 'flex' }}>
+       <View style={[styles.block, isOver && styles.blockOver]}>{children}</View>
+     </div>
+   );
+-- 
+2.43.0
+

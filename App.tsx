@@ -19,7 +19,10 @@ export default function App() {
   return (
     <AuthProvider>
       <SafeAreaView style={styles.container}>
-        <Header mode={mode} onModeChange={setMode} showAdminTab={!sharedEventId} />
+        {/* The shared Helfer link's own mobile-optimized screen has its own
+            title + event picker — the outer app chrome would just be a
+            second, redundant header eating into precious phone screen space. */}
+        {!sharedEventId && <Header mode={mode} onModeChange={setMode} />}
         {mode === 'admin' ? <AdminGate /> : <HelferScreen initialEventId={sharedEventId} />}
         <StatusBar style="auto" />
       </SafeAreaView>

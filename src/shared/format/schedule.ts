@@ -16,6 +16,16 @@ export function formatDayLabel(iso: string): string {
   return `${dayName}, ${dayNum}. ${monthStr}`;
 }
 
+/** Short weekday + "DD. Mon" split into two parts, for compact day-tab UI
+ * (e.g. the mobile Helfer view) — {@link formatDayLabel} returns both
+ * joined as one string, which doesn't fit a two-line tab. */
+export function formatDayTabParts(iso: string): { weekday: string; dateLabel: string } {
+  const d = new Date(iso);
+  const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace('.', '');
+  const dateLabel = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short' }).format(d);
+  return { weekday, dateLabel };
+}
+
 export function formatTime(iso: string): string {
   const d = new Date(iso);
   const formatter = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });

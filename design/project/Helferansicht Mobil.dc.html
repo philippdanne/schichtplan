@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body{margin:0;background:#F5F7F3;-webkit-tap-highlight-color:transparent;}
+  *{box-sizing:border-box;}
+</style>
+</helmet>
+<div style="{{ pageStyle }}">
+
+  <div style="{{ headerRowStyle }}">
+    <div style="{{ titleStyle }}">Schichtplan</div>
+    <select style="{{ eventSelectStyle }}" value="{{ selectedEvent }}" onChange="{{ onEventChange }}">
+      <sc-for list="{{ events }}" as="ev" hint-placeholder-count="2">
+        <option value="{{ ev.label }}">{{ ev.label }}</option>
+      </sc-for>
+    </select>
+  </div>
+
+  <div style="{{ whoBoxStyle }}">
+    <sc-if value="{{ !selectedName }}" hint-placeholder-val="{{ true }}">
+      <button style="{{ whoButtonStyle }}" onClick="{{ openPicker }}">
+        <span style="{{ whoButtonTitleStyle }}">Wer bist du?</span>
+        <span style="{{ whoButtonSubStyle }}">Namen wählen, um deine Schichten hervorzuheben</span>
+      </button>
+    </sc-if>
+    <sc-if value="{{ !!selectedName }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ selectedRowStyle }}">
+        <div style="{{ selectedPillStyle }}">
+          <span style="{{ selectedDotStyle }}"></span>
+          <span>Du bist <b>{{ selectedName }}</b></span>
+        </div>
+        <button style="{{ changeLinkStyle }}" onClick="{{ openPicker }}">ändern</button>
+      </div>
+      <button style="{{ onlyMineToggleStyle }}" onClick="{{ toggleOnlyMine }}">
+        <span style="{{ onlyMineDotStyle }}"></span>
+        Nur meine Schichten zeigen
+      </button>
+    </sc-if>
+
+    <sc-if value="{{ pickerOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ pickerPanelStyle }}">
+        <input style="{{ pickerInputStyle }}" placeholder="Namen suchen oder eingeben…" value="{{ searchQuery }}" onChange="{{ onSearchChange }}" autoFocus="{{ true }}"></input>
+        <div style="{{ pickerListStyle }}">
+          <sc-for list="{{ filteredNames }}" as="n" hint-placeholder-count="4">
+            <button style="{{ n.rowStyle }}" onClick="{{ n.onPick }}">{{ n.name }}</button>
+          </sc-for>
+          <sc-if value="{{ showUseTyped }}" hint-placeholder-val="{{ false }}">
+            <button style="{{ useTypedRowStyle }}" onClick="{{ useTypedName }}">„{{ searchQuery }}" verwenden</button>
+          </sc-if>
+        </div>
+        <button style="{{ pickerCloseStyle }}" onClick="{{ closePicker }}">Abbrechen</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ !onlyMine }}" hint-placeholder-val="{{ true }}">
+    <div style="{{ dayTabsBarStyle }}">
+      <div style="{{ dayTabsRowStyle }}">
+        <sc-for list="{{ days }}" as="day" hint-placeholder-count="2">
+          <button style="{{ day.tabStyle }}" onClick="{{ day.onSelect }}">
+            <span style="{{ day.tabLabelStyle }}">{{ day.label }}</span>
+            <span style="{{ day.tabDateStyle }}">{{ day.dateLabel }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="{{ listStyle }}">
+    <sc-if value="{{ emptyMine }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ emptyMineStyle }}">Keine eigenen Schichten in diesem Zeitraum.</div>
+    </sc-if>
+    <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="1">
+      <sc-if value="{{ sec.showHeader }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ sec.headerStyle }}">{{ sec.headerLabel }}</div>
+      </sc-if>
+      <sc-for list="{{ sec.shifts }}" as="shift" hint-placeholder-count="3">
+        <div style="{{ shift.cardStyle }}">
+        <sc-if value="{{ shift.isMine }}" hint-placeholder-val="{{ false }}">
+          <div style="{{ shift.mineBadgeStyle }}">Deine Schicht</div>
+        </sc-if>
+        <div style="{{ shift.topRowStyle }}">
+          <div style="{{ shift.timeStyle }}">{{ shift.time }}</div>
+          <sc-if value="{{ shift.unbesetzt }}" hint-placeholder-val="{{ false }}">
+            <div style="{{ shift.unbesetztBadgeStyle }}">Unbesetzt</div>
+          </sc-if>
+        </div>
+        <div style="{{ shift.titleStyle }}">{{ shift.title }}</div>
+        <div style="{{ shift.metaStyle }}">
+          {{ shift.category }}
+          <sc-if value="{{ shift.desc }}" hint-placeholder-val="{{ false }}">
+            <span> · {{ shift.desc }}</span>
+          </sc-if>
+        </div>
+        <sc-if value="{{ !shift.unbesetzt }}" hint-placeholder-val="{{ true }}">
+          <div style="{{ shift.chipsRowStyle }}">
+            <sc-for list="{{ shift.visibleHelpers }}" as="h" hint-placeholder-count="2">
+              <div style="{{ h.chipStyle }}">{{ h.name }}</div>
+            </sc-for>
+            <sc-if value="{{ shift.hasMore }}" hint-placeholder-val="{{ false }}">
+              <button style="{{ shift.moreChipStyle }}" onClick="{{ shift.toggleExpand }}">{{ shift.moreLabel }}</button>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+      </sc-for>
+    </sc-for>
+  </div>
+
+  <div style="{{ footerStyle }}">
+    <button style="{{ pdfButtonStyle }}" onClick="{{ noop }}">Gesamten Plan als PDF exportieren</button>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:412,&quot;height&quot;:900},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#3E9C5C&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#3E9C5C&quot;,&quot;#3E7C9C&quot;,&quot;#9C7C3E&quot;],&quot;section&quot;:&quot;Farben&quot;},&quot;warnColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#B85B3E&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#B85B3E&quot;,&quot;#B83E5B&quot;,&quot;#8C4E3E&quot;],&quot;section&quot;:&quot;Farben&quot;},&quot;denseCards&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+const INK = '#26281F', SUB = '#6C7063', CARD = '#FCFDFB', BG = '#F5F7F3';
+const BORDER = '#DEE2D9', BORDER_STRONG = '#CCD1C5', CHIP_BG = '#E9ECE4';
+const FONT = "-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif";
+
+const RAW_DAYS = [
+  { id: 'fr', label: 'Fr', dateLabel: '28. Aug', shifts: [
+    { id: 's1', time: '15:00–16:00', title: 'Zapfen beim Antreten', category: 'Zapfen', desc: 'Bargeld kassieren (noch keine Wertmarken werden verkauft)', helpers: ['Gudrun Kranich','Barbara Flügge'] },
+    { id: 's2', time: '16:30–19:30', title: 'Zapfen beim Vogelschießen', category: 'Zapfen', desc: '2 drinnen, 5 draußen. Eingeteilte Vorstandsmitglieder kommen nach der Schützenmesse nach und gehen vor Einmarsch in die Halle sofort zu den Theken. Während des Zapfenstreichs Schichtwechsel', helpers: ['Simone Danne','Gudrun Kranich','Barbara Flügge','Nick Lange','Leopold Schulte','Tom Vornweg','Maxi Schulte','Stefanie Danne'] },
+    { id: 's3', time: '16:30–21:00', title: 'Wertmarkenverkauf im Kartenhäuschen', category: 'Wertmarkenverkauf', desc: '', helpers: ['Miriam Sdunek','Kathrin Fehling'] },
+    { id: 's4', time: '16:30–20:00', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Anja Vormweg','Dagmar Kaim','Jenny Brinkschulte','Evelyn Rüther'] },
+    { id: 's5', time: '19:30–23:00', title: 'Zapfen', category: 'Zapfen', desc: '4 drinnen, 5 draußen - mit dem Zapfenstreich Schichtwechsel', helpers: ['Benedikt Sauer','Berthold Schleicher','Georg Bücher','Meinolf Lehmann','Reinold Schulte','Stefan König','Frank Danne','Franz-Josef Schauerte','Markus Danne','Olaf Baumeister'] },
+    { id: 's6', time: '20:00–00:30', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Emily Danne','Viktoria Nagel','Saskia Flügge','Louisa Flügge','Lara Danne','Marlene Kranich'] },
+    { id: 's7', time: '21:00–02:00', title: 'Wertmarkenverkauf im Kartenhäuschen', category: 'Wertmarkenverkauf', desc: '', helpers: ['Birgit Baumeister','Cornelia Flügge'] },
+    { id: 's8', time: '23:00–02:00', title: 'Zapfen bis zum Ende', category: 'Zapfen', desc: 'Irgendwann kann entschieden werden, den Wagen draußen zu schließen. Dann nur noch Verkauf an den Theken innen.', helpers: ['Michael Rettler','Nils Prothmann','René Zweimann','Yannik Danne','Adrian Kranich','Alex Flügge','Max Flügge','Steffen Danne'] },
+  ]},
+  { id: 'sa', label: 'Sa', dateLabel: '29. Aug', shifts: [
+    { id: 's9', time: '09:00–12:30', title: 'Aufräumen & Aufbau in der Halle', category: 'Aufräumen', desc: 'Aufräumen der Theke, Fegen der Halle, Aufräumen des Vorplatzes. Stellen der Bänke für den Frühschoppen.', helpers: ['Yannik Danne','Steffen Danne','René Zweimann','Simon Danne'] },
+    { id: 's10', time: '12:30–15:00', title: 'Kellnerdienst Frühschoppen', category: 'Kellnern', desc: '', helpers: ['Anja Vormweg','Dagmar Kaim'] },
+    { id: 's11', time: '15:00–18:00', title: 'Zapfen', category: 'Zapfen', desc: '', helpers: [] },
+    { id: 's12', time: '18:00–22:00', title: 'Kellnerdienst', category: 'Kellnern', desc: '', helpers: ['Emily Danne','Lara Danne','Marlene Kranich'] },
+  ]},
+];
+
+const ALL_NAMES = Array.from(new Set(RAW_DAYS.flatMap(d => d.shifts.flatMap(s => s.helpers)))).sort();
+
+class Component extends DCLogic {
+  state = {
+    selectedEvent: 'Jubelfest Hövel 2026',
+    selectedName: null,
+    pickerOpen: false,
+    searchQuery: '',
+    onlyMine: false,
+    activeDayId: 'fr',
+    expanded: {},
+  };
+
+  openPicker = () => this.setState({ pickerOpen: true, searchQuery: '' });
+  closePicker = () => this.setState({ pickerOpen: false });
+  pickName = (name) => this.setState({ selectedName: name, pickerOpen: false, searchQuery: '' });
+  useTypedName = () => { if (this.state.searchQuery.trim()) this.pickName(this.state.searchQuery.trim()); };
+  onSearchChange = (e) => this.setState({ searchQuery: e.target.value });
+  onEventChange = (e) => this.setState({ selectedEvent: e.target.value });
+  toggleOnlyMine = () => this.setState(s => ({ onlyMine: !s.onlyMine }));
+  selectDay = (id) => this.setState({ activeDayId: id });
+  toggleExpand = (shiftId) => this.setState(s => ({ expanded: { ...s.expanded, [shiftId]: !s.expanded[shiftId] } }));
+  noop = () => {};
+
+  renderVals() {
+    const accent = this.props.accentColor ?? '#3E9C5C';
+    const warn = this.props.warnColor ?? '#B85B3E';
+    const dense = this.props.denseCards ?? false;
+    const { selectedName, pickerOpen, searchQuery, onlyMine, activeDayId, expanded } = this.state;
+
+    const pageStyle = { maxWidth: 430, margin: '0 auto', minHeight: '100vh', background: BG, fontFamily: FONT, color: INK, paddingBottom: 32 };
+    const headerRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '18px 16px 6px' };
+    const titleStyle = { fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' };
+    const eventSelectStyle = { fontSize: 14, fontWeight: 600, color: SUB, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '8px 10px', maxWidth: 170 };
+
+    const whoBoxStyle = { padding: '10px 16px 0', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' };
+
+    const whoButtonStyle = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, width: '100%', textAlign: 'left', background: accent, color: '#FFFFFF', border: 'none', borderRadius: 16, padding: '16px 18px', minHeight: 44, cursor: 'pointer' };
+    const whoButtonTitleStyle = { fontSize: 19, fontWeight: 700 };
+    const whoButtonSubStyle = { fontSize: 13, opacity: 0.9, fontWeight: 500 };
+
+    const selectedRowStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 };
+    const selectedPillStyle = { display: 'flex', alignItems: 'center', gap: 8, background: CARD, border: `1px solid ${BORDER_STRONG}`, borderRadius: 14, padding: '12px 16px', fontSize: 16, flex: 1, minHeight: 44 };
+    const selectedDotStyle = { width: 10, height: 10, borderRadius: '50%', background: accent, flexShrink: 0 };
+    const changeLinkStyle = { fontSize: 14, fontWeight: 600, color: accent, background: 'none', border: 'none', padding: '10px 6px', cursor: 'pointer', minHeight: 44 };
+
+    const onlyMineToggleStyle = {
+      display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: 44,
+      background: onlyMine ? accent : CARD, color: onlyMine ? '#FFFFFF' : INK,
+      border: `1px solid ${onlyMine ? accent : BORDER_STRONG}`, borderRadius: 14, padding: '11px 16px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+    };
+    const onlyMineDotStyle = { width: 18, height: 18, borderRadius: 6, border: `2px solid ${onlyMine ? '#FFFFFF' : BORDER_STRONG}`, background: onlyMine ? '#FFFFFF' : 'transparent', flexShrink: 0, position: 'relative' };
+
+    const pickerPanelStyle = { position: 'absolute', top: '100%', left: 16, right: 16, marginTop: 6, background: CARD, border: `1px solid ${BORDER_STRONG}`, borderRadius: 16, boxShadow: '0 8px 24px rgba(38,40,31,0.18)', padding: 12, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380 };
+    const pickerInputStyle = { fontSize: 16, padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: BG, minHeight: 44 };
+    const pickerListStyle = { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260 };
+    const useTypedRowStyle = { textAlign: 'left', fontSize: 15, padding: '12px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: accent, fontWeight: 600, cursor: 'pointer', minHeight: 44 };
+    const pickerCloseStyle = { fontSize: 14, color: SUB, background: 'none', border: 'none', padding: '8px 4px', cursor: 'pointer', textAlign: 'center' };
+
+    const q = searchQuery.trim().toLowerCase();
+    const matches = ALL_NAMES.filter(n => n.toLowerCase().includes(q));
+    const filteredNames = matches.map(n => ({
+      name: n,
+      onPick: () => this.pickName(n),
+      rowStyle: { textAlign: 'left', fontSize: 16, padding: '12px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: INK, cursor: 'pointer', minHeight: 44 },
+    }));
+    const showUseTyped = q.length > 0 && !matches.some(n => n.toLowerCase() === q);
+
+    const days = RAW_DAYS.map(d => {
+      const active = d.id === activeDayId;
+      return {
+        id: d.id, label: d.label, dateLabel: d.dateLabel,
+        onSelect: () => this.selectDay(d.id),
+        tabStyle: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: 1, minHeight: 44, padding: '8px 4px', borderRadius: 12, border: 'none', cursor: 'pointer', background: active ? accent : 'transparent', color: active ? '#FFFFFF' : INK },
+        tabLabelStyle: { fontSize: 15, fontWeight: 700 },
+        tabDateStyle: { fontSize: 12, fontWeight: 500, opacity: active ? 0.9 : 0.65 },
+      };
+    });
+
+    const cardPad = dense ? '12px 14px' : '16px 16px';
+
+    const buildShift = (s) => {
+      const isMine = !!selectedName && s.helpers.includes(selectedName);
+      const isExpanded = !!expanded[s.id];
+      const orderedHelpers = isMine ? [selectedName, ...s.helpers.filter(h => h !== selectedName)] : s.helpers;
+      const visible = isExpanded ? orderedHelpers : orderedHelpers.slice(0, 4);
+      const hasMore = !isExpanded && orderedHelpers.length > 4;
+      const extra = orderedHelpers.length - 4;
+      return {
+        id: s.id, time: s.time, title: s.title, category: s.category, desc: s.desc,
+        unbesetzt: s.helpers.length === 0, isMine, hasMore,
+        moreLabel: `+${extra} weitere`,
+        toggleExpand: () => this.toggleExpand(s.id),
+        cardStyle: {
+          position: 'relative', background: isMine ? 'color-mix(in oklab, ' + accent + ' 10%, ' + CARD + ')' : CARD,
+          border: `1px solid ${isMine ? accent : BORDER}`, borderRadius: 16, padding: cardPad, marginBottom: 10,
+          borderLeft: isMine ? `4px solid ${accent}` : (s.helpers.length === 0 ? `4px solid ${warn}` : `1px solid ${BORDER}`),
+        },
+        mineBadgeStyle: { position: 'absolute', top: 12, right: 14, fontSize: 11, fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '0.03em' },
+        topRowStyle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+        timeStyle: { fontSize: 15, fontWeight: 700, color: SUB, fontVariantNumeric: 'tabular-nums' },
+        unbesetztBadgeStyle: { fontSize: 12, fontWeight: 700, color: '#FFFFFF', background: warn, borderRadius: 8, padding: '4px 10px', textTransform: 'uppercase', letterSpacing: '0.02em' },
+        titleStyle: { fontSize: 18, fontWeight: 700, lineHeight: 1.25, marginBottom: 2, paddingRight: isMine ? 90 : 0 },
+        metaStyle: { fontSize: 14, color: SUB, lineHeight: 1.4, marginBottom: s.helpers.length ? 10 : 0 },
+        chipsRowStyle: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+        visibleHelpers: visible.map(name => ({
+          name,
+          chipStyle: {
+            fontSize: 14, fontWeight: name === selectedName ? 700 : 500, padding: '7px 12px', borderRadius: 20,
+            background: name === selectedName ? accent : CHIP_BG, color: name === selectedName ? '#FFFFFF' : INK,
+          },
+        })),
+        moreChipStyle: { fontSize: 14, fontWeight: 600, padding: '7px 12px', borderRadius: 20, background: 'transparent', color: SUB, border: `1px dashed ${BORDER_STRONG}`, cursor: 'pointer', minHeight: 32 },
+      };
+    };
+
+    let sections, emptyMine = false;
+    if (onlyMine && selectedName) {
+      sections = RAW_DAYS.map(d => ({
+        day: d, shifts: d.shifts.filter(s => s.helpers.includes(selectedName)).map(buildShift),
+      })).filter(sec => sec.shifts.length > 0).map(sec => ({
+        shifts: sec.shifts, showHeader: true,
+        headerLabel: `${sec.day.label}., ${sec.day.dateLabel}`,
+        headerStyle: { fontSize: 13, fontWeight: 700, color: SUB, textTransform: 'uppercase', letterSpacing: '0.04em', margin: '18px 2px 8px' },
+      }));
+      emptyMine = sections.length === 0;
+    } else {
+      const rawActive = RAW_DAYS.find(d => d.id === activeDayId) || RAW_DAYS[0];
+      sections = [{ shifts: rawActive.shifts.map(buildShift), showHeader: false, headerLabel: '', headerStyle: {} }];
+    }
+
+    return {
+      pageStyle, headerRowStyle, titleStyle, eventSelectStyle,
+      events: [{ label: 'Jubelfest Hövel 2026' }, { label: 'Schützenfest Musterdorf 2025' }],
+      selectedEvent: this.state.selectedEvent, onEventChange: this.onEventChange,
+      whoBoxStyle, whoButtonStyle, whoButtonTitleStyle, whoButtonSubStyle, openPicker: this.openPicker,
+      selectedName, selectedRowStyle, selectedPillStyle, selectedDotStyle, changeLinkStyle,
+      onlyMineToggleStyle, onlyMineDotStyle, toggleOnlyMine: this.toggleOnlyMine,
+      pickerOpen, pickerPanelStyle, pickerInputStyle, pickerListStyle, useTypedRowStyle, pickerCloseStyle,
+      searchQuery, onSearchChange: this.onSearchChange, filteredNames, showUseTyped, useTypedName: this.useTypedName, closePicker: this.closePicker,
+      dayTabsBarStyle: { position: 'sticky', top: 0, zIndex: 20, background: BG, padding: '10px 16px', borderBottom: `1px solid ${BORDER}` },
+      dayTabsRowStyle: { display: 'flex', gap: 6, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 4 },
+      days,
+      listStyle: { padding: '14px 16px 0' },
+      emptyMineStyle: { textAlign: 'center', color: SUB, fontSize: 15, padding: '24px 0' },
+      sections, emptyMine, onlyMine,
+      footerStyle: { padding: '20px 16px 8px', textAlign: 'center' },
+      pdfButtonStyle: { fontSize: 13, color: SUB, background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', minHeight: 44 },
+      noop: this.noop,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

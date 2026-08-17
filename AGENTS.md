@@ -44,9 +44,10 @@ sich geändert:
   durchspringen. `App.tsx` liest den Parameter einmalig beim Start
   (`getSharedEventId()`), erzwingt Helfer-Modus und reicht die Event-ID an
   `HelferScreen` durch. Web-only (kein `window.location` auf nativ). Über
-  einen Share-Link ist der Admin-Tab im Header ausgeblendet
-  (`Header`-Prop `showAdminTab`), damit die geteilte Ansicht sich nicht wie
-  ein Admin-Tool präsentiert.
+  einen Share-Link rendert `App.tsx` den äußeren `Header` gar nicht erst —
+  `HelferScreen` hat seit dem Mobil-Redesign (siehe unten) ihre eigene
+  Titel-/Event-Auswahl-Zeile, der äußere "Schichtplaner"-Header wäre dort
+  nur redundantes Chrome auf kostbarem Handy-Bildschirmplatz.
 - Jede eingeloggte Person gilt als Admin — es gibt keine separate
   Admin-Rolle/-Tabelle. Die RLS-Policies in `supabase/migrations/0001_init.sql`
   gewähren Schreibzugriff an jede `authenticated`-Session.
@@ -70,6 +71,42 @@ hinaus laufen (Tag-Ende in der Toolbar entsprechend spät setzen, z. B.
 02:00) — die vorhandene Tag-Zeitspannen-Logik (`Timeline.tsx`,
 `resolveMin`/`spansMidnight`) rendert die Schicht dann automatisch korrekt
 in die verlängerte Spalte hinein.
+
+## Helfer-Ansicht — Mobil-Redesign
+
+`HelferScreen.tsx` wurde komplett aus dem Claude-Design-Handoff
+`design/project/Helferansicht Mobil.dc.html` umgesetzt (gleiches
+`support.js` wie das ursprüngliche Design, siehe HANDOFF-README.md).
+Zentrale Punkte, falls das Design nochmal angepasst/nachimportiert wird:
+
+- **"Wer bist du?"**-Flow ersetzt den alten Namensfilter komplett: großer
+  Auswahl-Button → Panel mit Suche + Namensliste (nur Namen, die in
+  diesem Event tatsächlich irgendwo zugewiesen sind, nicht der ganze
+  Helfer-Pool) + Option, einen nicht gelisteten Namen frei zu verwenden.
+  Nach Auswahl: Pill "Du bist **Name**" + Toggle "Nur meine Schichten
+  zeigen" (gruppiert dann nach Tag, blendet die Tag-Tabs aus).
+- **Tag-Tabs** (sticky beim Scrollen) ersetzen die lange
+  Alle-Tage-Scrollliste — `formatDayTabParts()` in `schedule.ts` liefert
+  Wochentag/Datum getrennt fürs zweizeilige Tab-Label.
+- **Zugewiesene Helfer als Chips**, eigener Name wird an den Anfang
+  sortiert und farblich hervorgehoben; ab 4 Helfern eingeklappt mit
+  "+N weitere"-Toggle statt endlosem Umbruch.
+- **"Deine Schicht"**-Karten: grüner Akzent-Tint (`colors.accentBg`,
+  vorberechnete ~10 %-Mischung — das Design nutzt `color-mix()`, das hat
+  aber keine native iOS/Android-Entsprechung), dickerer linker Rand,
+  Badge oben rechts. Unbesetzte Schichten kriegen stattdessen einen
+  roten linken Rand plus Badge.
+- **PDF-Export** ist bewusst ein unauffälliger Text-Link im Footer statt
+  ein Button — auf dem Handy ein Nebenfeature.
+- Layout ist eine auf 430px begrenzte, zentrierte Spalte (`page`-Style) —
+  sieht auch auf Desktop-Breite bewusst wie eine schmale
+  Handy-optimierte Seite aus, kein separates Desktop-Layout.
+- **Ebenen-Falle**: Jede `position:'absolute'`-Overlay-Fläche (Picker-
+  Panel, Event-Dropdown) braucht auf ihrem eigenen Eltern-Container ein
+  `zIndex`, das höher ist als das aller nachfolgenden Geschwister-Views
+  mit eigenem `zIndex` (z. B. die sticky Tag-Tabs-Leiste) — sonst
+  rendert das Overlay dahinter statt darüber. In dieser Datei:
+  `whoBox`-zIndex muss über dem der `dayTabsBar` liegen.
 
 ## Datenzugriff
 

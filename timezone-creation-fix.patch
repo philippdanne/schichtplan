@@ -1,0 +1,52 @@
+From 302869dc2dd2d14377433786e02c5da2f925b4da Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 17:41:55 +0000
+Subject: [PATCH] Remove redundant/incorrect timezone offset math in shift
+ creation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The previous fix manually added getTimezoneOffset() on top of a
+Date already correctly parsed from a local (no-suffix) datetime
+string. Per the ECMAScript Date Time String Format, a string like
+"2026-08-14T16:00:00" without a timezone suffix is already parsed
+as local time — .getTime() on it is already the correct UTC instant.
+Adding the offset on top shifted the stored time by another 2 hours,
+so newly created shifts still displayed at the wrong time.
+
+toISOString() alone (no manual offset) now serializes the correctly-
+parsed local instant as an unambiguous UTC string for storage.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ src/features/admin/AdminScreen.tsx | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/src/features/admin/AdminScreen.tsx b/src/features/admin/AdminScreen.tsx
+index d71d2bf..70eeb8f 100644
+--- a/src/features/admin/AdminScreen.tsx
++++ b/src/features/admin/AdminScreen.tsx
+@@ -253,11 +253,13 @@ export function AdminScreen() {
+         onClose={() => setShiftModal({ open: false, editing: null, prefill: null })}
+         onSave={async (value: ShiftFormValue) => {
+           if (!eventId || !currentDate) return;
+-          const localStart = `${currentDate}T${value.start}:00`;
+-          const localEnd = `${currentDate}T${value.end}:00`;
+-          const offset = new Date(localStart).getTimezoneOffset() * 60 * 1000;
+-          const startTime = new Date(new Date(localStart).getTime() + offset).toISOString();
+-          const endTime = new Date(new Date(localEnd).getTime() + offset).toISOString();
++          // `new Date("YYYY-MM-DDTHH:MM:SS")` without a timezone suffix is
++          // parsed as local time per the ECMAScript Date Time String Format,
++          // so .getTime() already yields the correct UTC instant — no manual
++          // offset math needed. toISOString() then serializes it
++          // unambiguously (with a "Z" suffix) for storage.
++          const startTime = new Date(`${currentDate}T${value.start}:00`).toISOString();
++          const endTime = new Date(`${currentDate}T${value.end}:00`).toISOString();
+           if (shiftModal.editing) {
+             const updated = await api.updateShift(shiftModal.editing.id, {
+               name: value.name,
+-- 
+2.43.0
+

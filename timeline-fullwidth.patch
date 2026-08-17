@@ -1,0 +1,101 @@
+From 2d5fafb1b6f435f4b36d96caa6734537fff818ac Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 17:30:34 +0000
+Subject: [PATCH] Make Timeline day columns fill the full available width
+
+Columns were fixed at 220px each, leaving a large dead gray area to
+the right whenever an event had fewer tags/columns than fit the
+viewport. Columns now flex to fill available width (flex-grow) while
+keeping a 220px minimum (flex-shrink: 0 + minWidth) so the horizontal
+scroll/drag-to-create behavior for many columns is unaffected.
+
+Shift-block lane positioning (for overlapping shifts sharing a column)
+switched from fixed-pixel widths derived from the old constant column
+width to percentage-based widths, since column width is now dynamic.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ src/features/admin/components/Timeline.tsx | 30 +++++++++++++++-------
+ 1 file changed, 21 insertions(+), 9 deletions(-)
+
+diff --git a/src/features/admin/components/Timeline.tsx b/src/features/admin/components/Timeline.tsx
+index 0e6b227..61a50f6 100644
+--- a/src/features/admin/components/Timeline.tsx
++++ b/src/features/admin/components/Timeline.tsx
+@@ -6,7 +6,6 @@ import { colors } from '../../../shared/theme/colors';
+ 
+ const PX_PER_HOUR = 56;
+ const COLUMN_WIDTH = 220;
+-const COLUMN_PADDING = 8;
+ const LANE_GAP = 4;
+ 
+ function minutesOfDay(iso: string): number {
+@@ -122,7 +121,7 @@ export function Timeline(props: Props) {
+ 
+   return (
+     <View style={styles.wrap}>
+-      <ScrollView contentContainerStyle={{ flexDirection: 'row' }}>
++      <ScrollView contentContainerStyle={{ flexDirection: 'row', minWidth: '100%' }}>
+         <View style={[styles.hourRail, { height }]}>
+           {ticks.map((min) => (
+             <Text key={min} style={[styles.hourTick, { top: ((min - dayStartMin) / 60) * PX_PER_HOUR - 6 }]}>
+@@ -145,11 +144,13 @@ export function Timeline(props: Props) {
+                   ((resolveMin(minutesOfDay(shift.endTime)) - resolveMin(minutesOfDay(shift.startTime))) / 60) * PX_PER_HOUR
+                 );
+                 const { lane, lanes } = lanesById.get(shift.id) ?? { lane: 0, lanes: 1 };
+-                const innerWidth = COLUMN_WIDTH - COLUMN_PADDING * 2;
+-                const laneWidth = (innerWidth - LANE_GAP * (lanes - 1)) / lanes;
+-                const left = COLUMN_PADDING + lane * (laneWidth + LANE_GAP);
++                const laneWidthPct = 100 / lanes;
++                const leftPct = lane * laneWidthPct;
+                 return (
+-                  <View key={shift.id} style={[styles.blockPosition, { top, height: heightPx, left, width: laneWidth }]}>
++                  <View
++                    key={shift.id}
++                    style={[styles.blockPosition, { top, height: heightPx, left: `${leftPct}%`, width: `${laneWidthPct}%` }]}
++                  >
+                     {props.dragEnabled ? (
+                       <DroppableShiftBlock shiftId={shift.id}>
+                         <ShiftBlockContent
+@@ -274,7 +275,15 @@ function DragCreateColumn({
+     <div
+       ref={ref}
+       onMouseDown={handleMouseDown}
+-      style={{ position: 'relative', height, width: COLUMN_WIDTH, cursor: 'crosshair', flexShrink: 0 }}
++      style={{
++        position: 'relative',
++        height,
++        flex: 1,
++        flexBasis: COLUMN_WIDTH,
++        flexShrink: 0,
++        minWidth: COLUMN_WIDTH,
++        cursor: 'crosshair',
++      }}
+     >
+       {children}
+       {drag && (
+@@ -371,7 +380,10 @@ const styles = StyleSheet.create({
+   hourRail: { width: 56, position: 'relative', borderRightWidth: 1, borderRightColor: colors.border },
+   hourTick: { position: 'absolute', right: 6, fontSize: 11, color: colors.textSecondary },
+   column: {
+-    width: 220,
++    flex: 1,
++    flexBasis: COLUMN_WIDTH,
++    flexShrink: 0,
++    minWidth: COLUMN_WIDTH,
+     position: 'relative',
+     borderRightWidth: 1,
+     borderRightColor: colors.border,
+@@ -389,7 +401,7 @@ const styles = StyleSheet.create({
+     textTransform: 'uppercase',
+     letterSpacing: 0.4,
+   },
+-  blockPosition: { position: 'absolute' },
++  blockPosition: { position: 'absolute', paddingHorizontal: LANE_GAP / 2 },
+   block: {
+     flex: 1,
+     borderRadius: 9,
+-- 
+2.43.0
+

@@ -1,0 +1,124 @@
+From 3b0de309e8776663963ee0c77897d9f99444bbc9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 16 Aug 2026 18:47:55 +0000
+Subject: [PATCH] Show assigned helpers as wrapping chips, add a name picker
+
+The assigned-helpers column was a single comma-joined Text capped at
+220px/2 lines, so shifts with several helpers just got truncated with
+no way to see who else was assigned. Each assigned helper now renders
+as its own chip in a flex-wrapping row, so the list grows downward
+instead of clipping.
+
+The existing free-text name filter already highlighted your own
+shifts, but finding yourself in a chip cloud on a busy shift was still
+hard -- your own chip (matched the same way as the row highlight) now
+gets a solid accent fill instead of the neutral chip background, so it
+visually pops out among everyone else's.
+
+Also added a Picker of all known helper names next to the text input,
+as a quicker alternative to typing for finding your own name -- picking
+an option just sets the same nameFilter state the text input uses, so
+both stay in sync.
+
+Verified live with a shift assigned to 7 helpers: chips wrap onto two
+rows instead of truncating, and typing/picking a name highlights both
+the shift row and that specific person's chip in accent green.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Qm1ZJgsnaADwCEstGj8Dvj
+---
+ src/features/helfer/HelferScreen.tsx | 53 +++++++++++++++++++++++-----
+ 1 file changed, 44 insertions(+), 9 deletions(-)
+
+diff --git a/src/features/helfer/HelferScreen.tsx b/src/features/helfer/HelferScreen.tsx
+index 7dfddca..c3d3e6f 100644
+--- a/src/features/helfer/HelferScreen.tsx
++++ b/src/features/helfer/HelferScreen.tsx
+@@ -45,11 +45,17 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
+ 
+   const dayGroups = useMemo(() => groupShiftsByDay(shifts), [shifts]);
+ 
+-  const isOwnShift = (shift: Shift) => {
++  const helperNameOptions = useMemo(() => {
++    const names = Array.from(new Set(helpers.map((h) => h.name))).sort((a, b) => a.localeCompare(b, 'de'));
++    return [{ value: '', label: '— Name wählen —' }, ...names.map((n) => ({ value: n, label: n }))];
++  }, [helpers]);
++
++  const isOwnHelper = (id: string) => {
+     const filter = nameFilter.trim().toLowerCase();
+     if (!filter) return false;
+-    return shift.assignedHelperIds.some((id) => helperName(id).toLowerCase().includes(filter));
++    return helperName(id).toLowerCase().includes(filter);
+   };
++  const isOwnShift = (shift: Shift) => shift.assignedHelperIds.some(isOwnHelper);
+ 
+   return (
+     <View style={styles.container}>
+@@ -59,10 +65,15 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
+           options={events.map((e) => ({ value: e.id, label: e.name }))}
+           onChange={setEventId}
+         />
++        <Picker
++          value={helperNameOptions.some((o) => o.value === nameFilter) ? nameFilter : ''}
++          options={helperNameOptions}
++          onChange={setNameFilter}
++        />
+         <TextInput
+           value={nameFilter}
+           onChangeText={setNameFilter}
+-          placeholder="Nach Namen filtern (z. B. deinem eigenen)…"
++          placeholder="…oder Namen eingeben"
+           style={styles.filterInput}
+         />
+         <Button
+@@ -104,11 +115,19 @@ export function HelferScreen({ initialEventId }: { initialEventId?: string | nul
+                         {tagName(shift.tagId)} · {shift.description}
+                       </Text>
+                     </View>
+-                    <Text style={styles.rowAssigned} numberOfLines={2}>
+-                      {shift.assignedHelperIds.length
+-                        ? shift.assignedHelperIds.map(helperName).join(', ')
+-                        : 'Unbesetzt'}
+-                    </Text>
++                    <View style={styles.assignedWrap}>
++                      {shift.assignedHelperIds.length ? (
++                        shift.assignedHelperIds.map((id) => (
++                          <View key={id} style={[styles.helperChip, isOwnHelper(id) && styles.helperChipOwn]}>
++                            <Text style={[styles.helperChipLabel, isOwnHelper(id) && styles.helperChipLabelOwn]}>
++                              {helperName(id)}
++                            </Text>
++                          </View>
++                        ))
++                      ) : (
++                        <Text style={styles.unassignedLabel}>Unbesetzt</Text>
++                      )}
++                    </View>
+                   </View>
+                 );
+               })}
+@@ -168,5 +187,21 @@ const styles = StyleSheet.create({
+   rowName: { fontSize: 14.5, fontWeight: '600', color: colors.textPrimary },
+   rowNameOwn: { color: colors.accent },
+   rowSub: { fontSize: 12.5, color: colors.textSecondary, marginTop: 1 },
+-  rowAssigned: { maxWidth: 220, textAlign: 'right', fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
++  assignedWrap: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    justifyContent: 'flex-end',
++    gap: 6,
++    maxWidth: 280,
++  },
++  helperChip: {
++    backgroundColor: colors.chipBg,
++    borderRadius: 20,
++    paddingVertical: 4,
++    paddingHorizontal: 11,
++  },
++  helperChipOwn: { backgroundColor: colors.accent },
++  helperChipLabel: { fontSize: 12.5, fontWeight: '600', color: colors.textPrimary },
++  helperChipLabelOwn: { color: colors.accentContrast },
++  unassignedLabel: { fontSize: 13, color: colors.danger, fontWeight: '500' },
+ });
+-- 
+2.43.0
+
